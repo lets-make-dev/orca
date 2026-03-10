@@ -430,7 +430,7 @@ class Launcher extends Component
     }
 
     /**
-     * @return array{user_id: int|null, user_email: string|null, route_handler: string|null, route_handler_type: string|null, route_name: string|null}
+     * @return array{user_id: int|string|null, user_email: string|null, route_handler: string|null, route_handler_type: string|null, route_name: string|null}
      */
     private function resolveSessionContext(): array
     {

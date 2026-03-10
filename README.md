@@ -104,7 +104,8 @@ php artisan vendor:publish --tag=orca-views
 
 ```bash
 # Start a queue worker (required for session processing)
-php artisan queue:work
+# --timeout=0 is critical — Claude sessions can run for minutes
+php artisan queue:work --timeout=0
 
 # Ensure Claude Code CLI is installed
 claude --version

@@ -16,7 +16,7 @@ class RunClaudeSession implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout;
+    public int $timeout = 3600;
 
     private bool $sessionDeleted = false;
 
