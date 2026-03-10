@@ -1,0 +1,36 @@
+{
+    "name": "make-dev/orca",
+    "description": "Agent Orchestration in your web app. Bring Claude Code into your Laravel app — no terminal hopping, no context copying. Orca turns every page into a live coding session: full page awareness, screenshots on demand, plan-then-execute safety, and seamless pop-out to macOS Terminal.",
+    "keywords": ["laravel", "claude", "ai", "livewire", "developer-tools"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Michael Craig",
+            "email": "m@ke.dev"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "laravel/framework": "^12.0",
+        "livewire/livewire": "^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "MakeDev\\Orca\\": "src/",
+            "MakeDev\\Orca\\Database\\Factories\\": "database/factories/",
+            "MakeDev\\Orca\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MakeDev\\Orca\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "MakeDev\\Orca\\Providers\\OrcaServiceProvider"
+            ]
+        }
+    }
+}
