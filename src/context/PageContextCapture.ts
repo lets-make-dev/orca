@@ -101,9 +101,11 @@ export class PageContextCapture {
     if (typeof XMLHttpRequest === 'undefined') return;
     const self = this;
     this.originalXHROpen = XMLHttpRequest.prototype.open;
-    // Use a broadly-typed override to avoid signature mismatch issues
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (XMLHttpRequest.prototype as any).open = function (
+    // Use a unified open signature that covers both overloads, with an explicit
+    // `this: XMLHttpRequest` parameter so the function body is properly typed.
+    type XHROpenFn = (this: XMLHttpRequest, method: string, url: string | URL, async?: boolean, username?: string | null, password?: string | null) => void;
+    (XMLHttpRequest.prototype as unknown as { open: XHROpenFn }).open = function (
+      this: XMLHttpRequest,
       method: string,
       url: string | URL,
       async: boolean = true,

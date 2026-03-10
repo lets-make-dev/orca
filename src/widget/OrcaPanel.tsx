@@ -31,7 +31,7 @@ interface OrcaPanelProps {
 
 export const OrcaPanel: React.FC<OrcaPanelProps> = ({
   sessionManager,
-  permissionManager: _permissionManager,
+  permissionManager,
   streamingClient,
   contextCapture,
   planningEngine,
@@ -147,11 +147,20 @@ export const OrcaPanel: React.FC<OrcaPanelProps> = ({
   }
 
   async function refreshContext() {
+    if (!permissionManager.hasPermission('readDOM') || !permissionManager.hasPermission('readConsole')) {
+      await permissionManager.requestPermission('readDOM');
+      await permissionManager.requestPermission('readConsole');
+      await permissionManager.requestPermission('readNetwork');
+    }
     const ctx = contextCapture.getContext();
     setPageContext(ctx);
   }
 
   async function takeScreenshot() {
+    if (!permissionManager.hasPermission('takeScreenshots')) {
+      const granted = await permissionManager.requestPermission('takeScreenshots');
+      if (!granted) return;
+    }
     const dataUrl = await captureScreenshot();
     setScreenshot(dataUrl);
     sessionManager.addEvent({ type: 'screenshot', data: dataUrl });
@@ -190,8 +199,12 @@ export const OrcaPanel: React.FC<OrcaPanelProps> = ({
     setPlan(null);
   }
 
-  function connectTerminal() {
+  async function connectTerminal() {
     if (!terminalWsUrl) return;
+    if (!permissionManager.hasPermission('accessTerminal')) {
+      const granted = await permissionManager.requestPermission('accessTerminal');
+      if (!granted) return;
+    }
     terminalBridge.connect(terminalWsUrl);
   }
 
@@ -410,7 +423,7 @@ export const OrcaPanel: React.FC<OrcaPanelProps> = ({
                     value={terminalWsUrl}
                     onChange={(e) => setTerminalWsUrl(e.target.value)}
                   />
-                  <button className="orca-btn-secondary" onClick={connectTerminal}>Connect</button>
+                  <button className="orca-btn-secondary" onClick={() => void connectTerminal()}>Connect</button>
                   <button className="orca-btn-secondary" onClick={() => terminalBridge.disconnect()}>Disconnect</button>
                 </div>
                 <div className="orca-terminal" ref={terminalRef}>{terminalOutput}</div>
