@@ -4,6 +4,7 @@ namespace MakeDev\Orca\Livewire;
 
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Session;
 use Livewire\Component;
 use MakeDev\Orca\Enums\OrcaSessionStatus;
@@ -45,6 +46,11 @@ class Launcher extends Component
 
     public string $sourceUrl = '';
 
+    public string $debugContext = '';
+
+    #[Session]
+    public bool $terminalMode = false;
+
     public function toggleSession(string $id): void
     {
         $this->expandedSessionId = $this->expandedSessionId === $id ? '' : $id;
@@ -83,6 +89,7 @@ class Launcher extends Component
         ]);
 
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
+        $prompt = $this->appendDebugContext($prompt);
 
         $session = OrcaSession::create([
             'session_type' => OrcaSessionType::Claude,
@@ -102,6 +109,7 @@ class Launcher extends Component
         $this->prompt = '';
         $this->screenshotPath = '';
         $this->sourceUrl = '';
+        $this->debugContext = '';
         $this->expandedSessionId = $session->id;
         $this->launcherOpen = false;
     }
@@ -113,6 +121,7 @@ class Launcher extends Component
         ]);
 
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
+        $prompt = $this->appendDebugContext($prompt);
 
         $session = OrcaSession::create([
             'session_type' => OrcaSessionType::Claude,
@@ -132,6 +141,7 @@ class Launcher extends Component
         $this->prompt = '';
         $this->screenshotPath = '';
         $this->sourceUrl = '';
+        $this->debugContext = '';
         $this->expandedSessionId = $session->id;
         $this->launcherOpen = false;
     }
@@ -322,6 +332,7 @@ class Launcher extends Component
         ]);
 
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
+        $prompt = $this->appendDebugContext($prompt);
 
         $session = OrcaSession::create([
             'session_type' => OrcaSessionType::Claude,
@@ -342,6 +353,46 @@ class Launcher extends Component
         $this->prompt = '';
         $this->screenshotPath = '';
         $this->sourceUrl = '';
+        $this->debugContext = '';
+        $this->expandedSessionId = $session->id;
+        $this->launcherOpen = false;
+    }
+
+    public function launchClaudeTerminalExecute(): void
+    {
+        $service = app(PopOutTerminalService::class);
+
+        if (! $service->isAvailable()) {
+            return;
+        }
+
+        $this->validate([
+            'prompt' => 'required|string|max:10000',
+        ]);
+
+        $prompt = $this->buildPromptWithScreenshot($this->prompt);
+        $prompt = $this->appendDebugContext($prompt);
+
+        $session = OrcaSession::create([
+            'session_type' => OrcaSessionType::Claude,
+            'prompt' => $prompt,
+            'screenshot_path' => $this->screenshotPath ?: null,
+            'source_url' => $this->sourceUrl ?: null,
+            ...$this->resolveSessionContext(),
+            'skip_permissions' => true,
+            'max_turns' => config('orca.claude.max_turns', 50),
+            'allowed_tools' => config('orca.claude.default_allowed_tools', []) ?: null,
+            'working_directory' => base_path(),
+            'status' => OrcaSessionStatus::PoppedOut,
+            'popped_out_at' => now(),
+        ]);
+
+        $service->popOut($session, request()->getSchemeAndHttpHost());
+
+        $this->prompt = '';
+        $this->screenshotPath = '';
+        $this->sourceUrl = '';
+        $this->debugContext = '';
         $this->expandedSessionId = $session->id;
         $this->launcherOpen = false;
     }
@@ -453,6 +504,44 @@ class Launcher extends Component
         return $context;
     }
 
+    private function appendDebugContext(string $prompt): string
+    {
+        if ($this->debugContext) {
+            $prompt .= "\n\n---\n\n".$this->debugContext;
+        }
+
+        return $prompt;
+    }
+
+    /**
+     * @return array{sourceUrl: string|null, route: string, handler: string, views: string, authUser: string}
+     */
+    private function resolveCurrentPageDebugContext(): array
+    {
+        $resolver = app(RouteResolver::class);
+        $resolved = $resolver->resolve($this->sourceUrl);
+        $user = auth()->user();
+
+        $routeDisplay = 'N/A';
+        if ($resolved['handler']) {
+            $routeDisplay = $resolved['type'].': '.class_basename(Str::before($resolved['handler'], '@'));
+            if (Str::contains($resolved['handler'], '@')) {
+                $routeDisplay .= '@'.Str::after($resolved['handler'], '@');
+            }
+            if ($resolved['name']) {
+                $routeDisplay .= ' ('.$resolved['name'].')';
+            }
+        }
+
+        return [
+            'sourceUrl' => $this->sourceUrl,
+            'route' => $routeDisplay,
+            'handler' => $resolver->resolveHandlerFile($resolved['handler']) ?? 'N/A',
+            'views' => implode("\n", $resolver->resolveViewFiles($resolved['handler'], $this->sourceUrl)) ?: 'N/A',
+            'authUser' => $user ? $user->email.' (#'.$user->id.')' : 'Guest',
+        ];
+    }
+
     private function buildPromptWithScreenshot(string $prompt): string
     {
         if ($this->screenshotPath && file_exists($this->screenshotPath)) {
@@ -543,6 +632,7 @@ class Launcher extends Component
             'activeCount' => $this->getActiveCount(),
             'currentToolPhrase' => $currentToolPhrase,
             'canPopOut' => app(PopOutTerminalService::class)->isAvailable(),
+            'launcherDebugContext' => $this->launcherOpen && $this->sourceUrl ? $this->resolveCurrentPageDebugContext() : null,
         ]);
     }
 }

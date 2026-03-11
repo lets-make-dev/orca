@@ -2,4 +2,5 @@
 /vendor/
 .phpunit.result.cache
 package-lock.json
+img.png
 img_*.png

@@ -37,16 +37,47 @@ class PopOutTerminalService
 
     public function buildWrapperScript(OrcaSession $session, string $callbackUrl): string
     {
-        $claudeCmd = $this->buildClaudeCommand($session);
+        $interactive = $session->status === OrcaSessionStatus::PoppedOut;
+        $claudeCmd = $this->buildClaudeCommand($session, $interactive);
         $transcriptPath = sys_get_temp_dir().'/orca_transcript_'.$session->id.'.txt';
         $sessionId = $session->id;
+        $logPath = storage_path('logs/orca-popout.log');
+        $mode = $session->skip_permissions ? 'execute' : ($session->permission_mode ?: 'default');
+
+        $promptBlock = '';
+        if ($interactive && $session->prompt) {
+            $escapedPrompt = $this->escapeForBash($session->prompt);
+            $promptBlock = <<<PROMPT
+
+# Copy prompt to clipboard and display it
+echo {$escapedPrompt} | pbcopy
+echo -e "\\033[90m▸ Prompt copied to clipboard — paste it into Claude\\033[0m"
+echo -e "\\033[90m────────────────────────────────────────\\033[0m"
+echo -e "\\033[37m\$(echo {$escapedPrompt} | head -c 500)\\033[0m"
+echo -e "\\033[90m────────────────────────────────────────\\033[0m"
+echo ""
+PROMPT;
+        }
 
         return <<<BASH
 #!/bin/bash
 cd {$this->escapeForBash($session->working_directory ?: base_path())}
 
 TRANSCRIPT_PATH="{$transcriptPath}"
+LOG_PATH="{$logPath}"
 
+# Log the command
+echo "" >> "\$LOG_PATH"
+echo "────────────────────────────────────────" >> "\$LOG_PATH"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Session: {$sessionId}" >> "\$LOG_PATH"
+echo "Mode: {$mode}" >> "\$LOG_PATH"
+echo "Command: {$claudeCmd}" >> "\$LOG_PATH"
+echo "────────────────────────────────────────" >> "\$LOG_PATH"
+
+# Show the command in terminal
+echo -e "\\033[90m▸ {$mode} mode\\033[0m"
+echo -e "\\033[90m▸ {$claudeCmd}\\033[0m"
+{$promptBlock}
 # Run Claude interactively with transcript capture
 script -q "\$TRANSCRIPT_PATH" {$claudeCmd}
 EXIT_CODE=\$?
@@ -61,7 +92,7 @@ exit \$EXIT_CODE
 BASH;
     }
 
-    public function buildClaudeCommand(OrcaSession $session): string
+    public function buildClaudeCommand(OrcaSession $session, bool $interactive = false): string
     {
         $binary = config('orca.claude.binary', 'claude');
         $parts = ['env', '-u', 'CLAUDECODE', escapeshellarg($binary)];
@@ -70,7 +101,7 @@ BASH;
             $resumeId = $session->resume_session_id ?: $session->claude_session_id;
             $parts[] = '--resume';
             $parts[] = escapeshellarg($resumeId);
-        } elseif ($session->prompt) {
+        } elseif (! $interactive && $session->prompt) {
             $parts[] = '-p';
             $parts[] = escapeshellarg($session->prompt);
         }
