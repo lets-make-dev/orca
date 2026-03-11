@@ -13,7 +13,7 @@ import (
 	"golang.org/x/term"
 )
 
-func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath string, debugLogPath string, injectCh <-chan string, rawKeyCh <-chan byte) int {
+func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath string, debugLogPath string, injectCh <-chan string, rawKeyCh <-chan byte, statusCh <-chan struct{}) int {
 	// Open transcript file for tee-ing output
 	transcriptFile, err := os.Create(transcriptPath)
 	if err != nil {
@@ -90,6 +90,13 @@ func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath str
 	go func() {
 		for key := range rawKeyCh {
 			ptmx.Write([]byte{key})
+		}
+	}()
+
+	// Listen for status trigger from socket — runs the full /status hotkey flow
+	go func() {
+		for range statusCh {
+			runHotkey(ptmx, 0)
 		}
 	}()
 

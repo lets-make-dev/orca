@@ -65,6 +65,7 @@ func main() {
 	// Channels for injecting into the PTY from the socket
 	injectCh := make(chan string, 10)
 	rawKeyCh := make(chan byte, 10)
+	statusCh := make(chan struct{}, 10)
 
 	// Handle signals for clean shutdown
 	sigCh := make(chan os.Signal, 1)
@@ -85,10 +86,15 @@ func main() {
 		rawKeyCh <- key
 	}
 
+	// Wire up status trigger from socket to PTY (runs full /status hotkey flow)
+	socketServer.onStatus = func() {
+		statusCh <- struct{}{}
+	}
+
 	// Run Claude via PTY
 	transcriptPath := fmt.Sprintf("%s/orca_transcript_%s.txt", *tempDir, *sessionID)
 	debugLogPath := fmt.Sprintf("%s/orca_scanner_debug_%s.log", *tempDir, *sessionID)
-	exitCode := runPTY(*claudeCmd, *prompt, *promptDelay, transcriptPath, debugLogPath, injectCh, rawKeyCh)
+	exitCode := runPTY(*claudeCmd, *prompt, *promptDelay, transcriptPath, debugLogPath, injectCh, rawKeyCh, statusCh)
 
 	// POST callback
 	postCallback(*callbackURL, *sessionID, exitCode, transcriptPath)
