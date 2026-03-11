@@ -23,10 +23,14 @@ class InjectLauncher
             return $response;
         }
 
-        $cssTag = '<link rel="stylesheet" href="/orca/orca.css">';
+        $distDir = dirname(__DIR__, 3).'/dist';
+        $cssVersion = @filemtime($distDir.'/orca.css') ?: 0;
+        $jsVersion = @filemtime($distDir.'/orca-annotator.js') ?: 0;
+
+        $cssTag = '<link rel="stylesheet" href="/orca/orca.css?v='.$cssVersion.'">';
         $content = str_replace('</head>', $cssTag."\n</head>", $content);
 
-        $jsTag = '<script src="/orca/orca.js" defer></script>';
+        $jsTag = '<script src="/orca/orca.js?v='.$jsVersion.'" defer></script>';
         $livewireTag = Blade::render('@livewire(\'orca-launcher\')');
 
         $content = str_replace('</body>', $jsTag."\n".$livewireTag."\n</body>", $content);

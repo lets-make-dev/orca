@@ -16,6 +16,11 @@ class PopOutTerminalService
             && config('orca.popout.enabled', true);
     }
 
+    public function isExpectAvailable(): bool
+    {
+        return file_exists('/usr/bin/expect');
+    }
+
     public function popOut(OrcaSession $session, string $baseUrl): void
     {
         $callbackUrl = $baseUrl.'/orca/popout/return';
@@ -35,6 +40,27 @@ class PopOutTerminalService
         exec('open -a Terminal '.escapeshellarg($scriptPath));
     }
 
+    public function buildExpectScript(OrcaSession $session, string $transcriptPath): string
+    {
+        $claudeCmd = $this->buildClaudeCommand($session, true);
+        $escapedPrompt = $this->escapeForTcl($session->prompt);
+        $escapedCmd = $this->escapeForTcl($claudeCmd);
+        $initialDelay = (int) config('orca.popout.expect_initial_delay', 3);
+
+        return <<<TCL
+#!/usr/bin/expect -f
+set timeout -1
+log_file -noappend "{$transcriptPath}"
+set cmd "{$escapedCmd}"
+spawn sh -c \$cmd
+sleep {$initialDelay}
+send "{$escapedPrompt}\r"
+interact
+catch wait result
+exit [lindex \$result 3]
+TCL;
+    }
+
     public function buildWrapperScript(OrcaSession $session, string $callbackUrl): string
     {
         $interactive = $session->status === OrcaSessionStatus::PoppedOut;
@@ -43,11 +69,37 @@ class PopOutTerminalService
         $sessionId = $session->id;
         $logPath = storage_path('logs/orca-popout.log');
         $mode = $session->skip_permissions ? 'execute' : ($session->permission_mode ?: 'default');
+        $screenshotPath = sys_get_temp_dir().'/orca_terminal_screenshot_'.$session->id.'.png';
 
-        $promptBlock = '';
-        if ($interactive && $session->prompt) {
+        $useExpect = $interactive && $session->prompt && $this->isExpectAvailable();
+
+        if ($useExpect) {
+            $expectScriptPath = sys_get_temp_dir().'/orca_expect_'.$session->id.'.exp';
+            $expectContent = $this->buildExpectScript($session, $transcriptPath);
             $escapedPrompt = $this->escapeForBash($session->prompt);
-            $promptBlock = <<<PROMPT
+            $runBlock = <<<RUN
+
+# Write expect script
+cat > "{$expectScriptPath}" << 'EXPECT_EOF'
+{$expectContent}
+EXPECT_EOF
+chmod +x "{$expectScriptPath}"
+
+echo -e "\\033[90m▸ Prompt will be sent automatically\\033[0m"
+echo -e "\\033[90m────────────────────────────────────────\\033[0m"
+echo -e "\\033[37m\$(echo {$escapedPrompt} | head -c 500)\\033[0m"
+echo -e "\\033[90m────────────────────────────────────────\\033[0m"
+echo ""
+
+# Run via expect
+/usr/bin/expect "{$expectScriptPath}"
+EXIT_CODE=\$?
+RUN;
+        } else {
+            $promptBlock = '';
+            if ($interactive && $session->prompt) {
+                $escapedPrompt = $this->escapeForBash($session->prompt);
+                $promptBlock = <<<PROMPT
 
 # Copy prompt to clipboard and display it
 echo {$escapedPrompt} | pbcopy
@@ -57,7 +109,17 @@ echo -e "\\033[37m\$(echo {$escapedPrompt} | head -c 500)\\033[0m"
 echo -e "\\033[90m────────────────────────────────────────\\033[0m"
 echo ""
 PROMPT;
+            }
+
+            $runBlock = <<<RUN
+{$promptBlock}
+# Run Claude interactively with transcript capture
+script -q "\$TRANSCRIPT_PATH" {$claudeCmd}
+EXIT_CODE=\$?
+RUN;
         }
+
+        $screenshotBlock = $this->buildScreenshotCaptureBlock($sessionId, $screenshotPath);
 
         return <<<BASH
 #!/bin/bash
@@ -65,6 +127,9 @@ cd {$this->escapeForBash($session->working_directory ?: base_path())}
 
 TRANSCRIPT_PATH="{$transcriptPath}"
 LOG_PATH="{$logPath}"
+
+# Set terminal window title for screenshot capture
+echo -ne "\\033]0;orca-{$sessionId}\\007"
 
 # Log the command
 echo "" >> "\$LOG_PATH"
@@ -77,10 +142,15 @@ echo "────────────────────────�
 # Show the command in terminal
 echo -e "\\033[90m▸ {$mode} mode\\033[0m"
 echo -e "\\033[90m▸ {$claudeCmd}\\033[0m"
-{$promptBlock}
-# Run Claude interactively with transcript capture
-script -q "\$TRANSCRIPT_PATH" {$claudeCmd}
-EXIT_CODE=\$?
+
+{$screenshotBlock}
+{$runBlock}
+
+# Kill screenshot capture loop
+if [ -n "\$SCREENSHOT_PID" ]; then
+    kill \$SCREENSHOT_PID 2>/dev/null
+    wait \$SCREENSHOT_PID 2>/dev/null
+fi
 
 # Callback to Orca with exit code and transcript path
 curl -s -X POST "{$callbackUrl}" \
@@ -196,10 +266,46 @@ BASH;
             @unlink($session->popout_script_path);
         }
 
-        $transcriptPath = sys_get_temp_dir().'/orca_transcript_'.$session->id.'.txt';
-        if (file_exists($transcriptPath)) {
-            @unlink($transcriptPath);
+        $tempDir = sys_get_temp_dir();
+        $id = $session->id;
+
+        $tempFiles = [
+            $tempDir.'/orca_transcript_'.$id.'.txt',
+            $tempDir.'/orca_expect_'.$id.'.exp',
+            $tempDir.'/orca_terminal_screenshot_'.$id.'.png',
+        ];
+
+        foreach ($tempFiles as $path) {
+            if (file_exists($path)) {
+                @unlink($path);
+            }
         }
+    }
+
+    public function screenshotPath(OrcaSession $session): string
+    {
+        return sys_get_temp_dir().'/orca_terminal_screenshot_'.$session->id.'.png';
+    }
+
+    private function buildScreenshotCaptureBlock(string $sessionId, string $screenshotPath): string
+    {
+        $interval = (int) config('orca.popout.screenshot_interval', 5);
+        $initialDelay = (int) config('orca.popout.screenshot_initial_delay', 4);
+
+        return <<<BASH
+# Background screenshot capture loop using Terminal window ID
+(
+    sleep {$initialDelay}
+    while true; do
+        CAPTURE_WID=\$(osascript -e 'tell application "Terminal" to get id of front window' 2>/dev/null)
+        if [ -n "\$CAPTURE_WID" ]; then
+            screencapture -l"\$CAPTURE_WID" -x -o "{$screenshotPath}" 2>/dev/null
+        fi
+        sleep {$interval}
+    done
+) &
+SCREENSHOT_PID=\$!
+BASH;
     }
 
     private function stripAnsiCodes(string $text): string
@@ -210,5 +316,14 @@ BASH;
     private function escapeForBash(string $value): string
     {
         return escapeshellarg($value);
+    }
+
+    private function escapeForTcl(string $value): string
+    {
+        return str_replace(
+            ['\\', '"', '[', ']', '{', '}', '$'],
+            ['\\\\', '\\"', '\\[', '\\]', '\\{', '\\}', '\\$'],
+            $value,
+        );
     }
 }

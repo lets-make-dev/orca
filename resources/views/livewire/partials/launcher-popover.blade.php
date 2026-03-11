@@ -17,12 +17,35 @@
         },
         debugValues: @js($launcherDebugContext),
 
-        startAnnotation() {
+        annotateMode: 'click',
+
+        startAnnotation(mode = 'click') {
             if (!this.annotator) {
                 this.annotator = new window.OrcaAnnotator();
             }
-            this.annotator.enable();
+            this.annotateMode = mode;
+            this.annotator.enable(mode);
             this.annotating = true;
+        },
+
+        async uploadScreenshotBlob(blob) {
+            const form = new FormData();
+            form.append('screenshot', blob, 'screenshot.png');
+
+            const response = await fetch('{{ route('orca.screenshot.store') }}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '{{ csrf_token() }}',
+                },
+                body: form,
+            });
+
+            if (!response.ok) throw new Error('Upload failed');
+
+            const data = await response.json();
+            $wire.set('screenshotPath', data.path);
+
+            this.thumbnailUrl = URL.createObjectURL(blob);
         },
 
         async captureScreenshot() {
@@ -34,25 +57,7 @@
                 this.annotator.disable();
                 this.annotating = false;
 
-                // Upload to server
-                const form = new FormData();
-                form.append('screenshot', blob, 'screenshot.png');
-
-                const response = await fetch('{{ route('orca.screenshot.store') }}', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '{{ csrf_token() }}',
-                    },
-                    body: form,
-                });
-
-                if (!response.ok) throw new Error('Upload failed');
-
-                const data = await response.json();
-                $wire.set('screenshotPath', data.path);
-
-                // Show thumbnail
-                this.thumbnailUrl = URL.createObjectURL(blob);
+                await this.uploadScreenshotBlob(blob);
             } catch (e) {
                 console.error('Screenshot capture failed:', e);
             } finally {
@@ -103,7 +108,6 @@
         },
 
         submitPlan() {
-            $wire.set('debugContext', this.buildDebugContext());
             if ($wire.terminalMode) {
                 $wire.launchClaudeTerminal();
             } else {
@@ -112,7 +116,6 @@
         },
 
         submitExecute() {
-            $wire.set('debugContext', this.buildDebugContext());
             if ($wire.terminalMode) {
                 $wire.launchClaudeTerminalExecute();
             } else {
@@ -133,15 +136,17 @@
     x-init="$wire.set('sourceUrl', window.location.href)"
 >
     <form x-on:submit.prevent="submitPlan()" class="space-y-2">
-        <flux:textarea
-            wire:model="prompt"
-            placeholder="Describe what you want Claude to do..."
-            rows="3"
-            class="text-xs"
-            x-on:keydown.cmd.enter="submitPlan()"
-            x-on:keydown.ctrl.enter="submitPlan()"
-            x-init="$nextTick(() => $el.focus())"
-        />
+        <template x-if="!annotating">
+            <flux:textarea
+                wire:model="prompt"
+                placeholder="Describe what you want Claude to do..."
+                rows="3"
+                class="text-xs"
+                x-on:keydown.cmd.enter="submitPlan()"
+                x-on:keydown.ctrl.enter="submitPlan()"
+                x-init="$nextTick(() => $el.focus())"
+            />
+        </template>
 
         {{-- Screenshot thumbnail preview --}}
         <template x-if="thumbnailUrl">
@@ -240,16 +245,26 @@
 
         {{-- Annotation controls --}}
         <div class="flex items-center gap-2" x-show="!annotating">
-            <flux:button
-                type="button"
-                size="sm"
-                variant="ghost"
-                icon="camera"
-                x-on:click="startAnnotation()"
-                x-show="!thumbnailUrl"
-            >
-                Annotate
-            </flux:button>
+            <div class="flex items-center gap-1" x-show="!thumbnailUrl">
+                <flux:button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    icon="camera"
+                    x-on:click="startAnnotation('click')"
+                >
+                    Annotate
+                </flux:button>
+                <flux:button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    icon="scissors"
+                    x-on:click="startAnnotation('crop')"
+                >
+                    Crop
+                </flux:button>
+            </div>
 
             <div class="flex flex-1 items-center gap-2">
                 <flux:button type="submit" size="sm" variant="primary" icon="play" class="flex-1">
@@ -263,7 +278,7 @@
 
         {{-- Active annotation mode --}}
         <div x-show="annotating" class="flex items-center gap-2">
-            <span class="text-xs text-amber-400 italic">Click an element or select text...</span>
+            <span class="text-xs text-amber-400 italic" x-text="annotateMode === 'crop' ? 'Drag to select an area...' : 'Click an element or select text...'"></span>
             <flux:button
                 type="button"
                 size="sm"

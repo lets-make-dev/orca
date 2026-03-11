@@ -140,6 +140,8 @@ Configuration can be published to `config/orca.php` and overridden via environme
 |---|---|---|
 | `ORCA_POPOUT_ENABLED` | `true` | Enable the Pop Out to Terminal feature (macOS only) |
 
+> **Screen Recording permission required for live preview:** The pop-out terminal feature shows a live screenshot preview of the Terminal window in the Orca widget. This requires **Terminal.app** to have Screen Recording permission. Grant it in **System Settings → Privacy & Security → Screen & System Audio Recording → Terminal**. Without this permission, screenshots will be blank and the widget will show a fallback "Running in Terminal" indicator instead.
+
 ### Auto-Login
 
 | Variable | Default | Description |

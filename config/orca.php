@@ -23,6 +23,9 @@ return [
         'enabled' => env('ORCA_POPOUT_ENABLED', true),
         'transcript_max_kb' => 50,
         'cleanup_on_return' => true,
+        'screenshot_interval' => 5,
+        'screenshot_initial_delay' => 4,
+        'expect_initial_delay' => 3,
     ],
 
     'auto_login' => [

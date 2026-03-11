@@ -87,7 +87,6 @@ class Launcher extends Component
         $this->validate([
             'prompt' => 'required|string|max:10000',
         ]);
-
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
         $prompt = $this->appendDebugContext($prompt);
 
@@ -119,7 +118,6 @@ class Launcher extends Component
         $this->validate([
             'prompt' => 'required|string|max:10000',
         ]);
-
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
         $prompt = $this->appendDebugContext($prompt);
 
@@ -330,7 +328,6 @@ class Launcher extends Component
         $this->validate([
             'prompt' => 'required|string|max:10000',
         ]);
-
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
         $prompt = $this->appendDebugContext($prompt);
 
@@ -369,7 +366,6 @@ class Launcher extends Component
         $this->validate([
             'prompt' => 'required|string|max:10000',
         ]);
-
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
         $prompt = $this->appendDebugContext($prompt);
 
@@ -395,6 +391,29 @@ class Launcher extends Component
         $this->debugContext = '';
         $this->expandedSessionId = $session->id;
         $this->launcherOpen = false;
+    }
+
+    public function focusTerminal(string $id): void
+    {
+        $session = OrcaSession::find($id);
+
+        if (! $session || $session->status !== OrcaSessionStatus::PoppedOut) {
+            return;
+        }
+
+        $escapedId = escapeshellarg("orca-{$id}");
+
+        exec('osascript -e '.escapeshellarg(
+            'tell application "Terminal" to activate'."\n".
+            'tell application "System Events" to tell process "Terminal"'."\n".
+            '  set frontmost to true'."\n".
+            '  repeat with w in windows'."\n".
+            '    if name of w contains '.$escapedId.' then'."\n".
+            '      perform action "AXRaise" of w'."\n".
+            '    end if'."\n".
+            '  end repeat'."\n".
+            'end tell'
+        ).' > /dev/null 2>&1 &');
     }
 
     public function clearScreenshot(): void
@@ -423,12 +442,22 @@ class Launcher extends Component
     {
         $session = OrcaSession::find($id);
 
-        if (! $session || ! $session->status->isTerminal()) {
+        if (! $session) {
             return;
+        }
+
+        // Kill active sessions first
+        if ($session->status->isActive()) {
+            $this->kill($id);
+            $session->refresh();
         }
 
         if ($session->child()->active()->exists()) {
             return;
+        }
+
+        if ($this->expandedSessionId === $id) {
+            $this->expandedSessionId = '';
         }
 
         // Also delete the parent session if this is a child
@@ -506,9 +535,20 @@ class Launcher extends Component
 
     private function appendDebugContext(string $prompt): string
     {
-        if ($this->debugContext) {
-            $prompt .= "\n\n---\n\n".$this->debugContext;
+        if (! $this->sourceUrl) {
+            return $prompt;
         }
+
+        $debug = $this->resolveCurrentPageDebugContext();
+
+        $parts = ['# Debug Context'];
+        $parts[] = "## Source URL\n{$debug['sourceUrl']}";
+        $parts[] = "## Route\n{$debug['route']}";
+        $parts[] = "## Handler\n{$debug['handler']}";
+        $parts[] = "## Views\n{$debug['views']}";
+        $parts[] = "## Auth User\n{$debug['authUser']}";
+
+        $prompt .= "\n\n---\n\n".implode("\n\n", $parts);
 
         return $prompt;
     }

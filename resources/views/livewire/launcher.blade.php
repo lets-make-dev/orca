@@ -45,73 +45,81 @@
                                 <button wire:click="kill('{{ $expandedSession->id }}')" class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-red-400" title="Kill">
                                     <flux:icon name="stop" variant="micro" class="size-3.5" />
                                 </button>
-                            @elseif ($expandedSession->status->isTerminal())
-                                <button wire:click="dismiss('{{ $expandedSession->id }}')" class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-white" title="Dismiss">
-                                    <flux:icon name="trash" variant="micro" class="size-3.5" />
-                                </button>
                             @endif
+                            <button wire:click="dismiss('{{ $expandedSession->id }}')" wire:confirm="Delete this session?" class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-red-400" title="Delete">
+                                <flux:icon name="trash" variant="micro" class="size-3.5" />
+                            </button>
                             <button wire:click="toggleSession('{{ $expandedSession->id }}')" class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-white" title="Close">
                                 <flux:icon name="x-mark" variant="micro" class="size-3.5" />
                             </button>
                         </div>
                     </div>
 
-                    {{-- Countdown timer (below header keyline, right-aligned) --}}
-                    @if ($expandedSession->isClaude() && $expandedSession->status->isActive())
+                    {{-- Messages area (timer floats inside) --}}
+                    @if ($expandedSession->isClaude() && $expandedSession->isPoppedOut())
                         <div
+                            class="flex flex-1 flex-col items-center justify-center"
                             x-data="{
-                                minimized: false,
-                                remaining: 0,
-                                display: '',
-                                progress: 100,
+                                loaded: false,
+                                timestamp: Date.now(),
+                                elapsed: '0:00',
                                 init() {
                                     const started = new Date('{{ $expandedSession->created_at->toIso8601String() }}');
                                     const tick = () => {
-                                        this.remaining = Math.max(0, 900 - Math.floor((Date.now() - started.getTime()) / 1000));
-                                        this.progress = (this.remaining / 900) * 100;
-                                        const m = Math.floor(this.remaining / 60);
-                                        const s = this.remaining % 60;
-                                        this.display = m + ':' + String(s).padStart(2, '0');
+                                        const secs = Math.floor((Date.now() - started.getTime()) / 1000);
+                                        const m = Math.floor(secs / 60);
+                                        const s = secs % 60;
+                                        this.elapsed = m + ':' + String(s).padStart(2, '0');
                                     };
                                     tick();
-                                    this.interval = setInterval(tick, 1000);
+                                    this.interval = setInterval(() => {
+                                        this.timestamp = Date.now();
+                                        tick();
+                                    }, 1000);
                                 },
                                 destroy() { clearInterval(this.interval); }
                             }"
-                            class="flex cursor-pointer select-none justify-end px-3 py-1"
-                            x-on:click="minimized = !minimized"
                         >
-                            {{-- Expanded: pill with countdown --}}
+                            {{-- Screenshot thumbnail: overflow-masked, shows top portion --}}
                             <div
-                                x-show="!minimized"
-                                x-text="display"
-                                class="rounded-full px-2 py-0.5 font-mono text-[10px] tabular-nums"
-                                :class="remaining <= 60 ? 'bg-red-900/80 text-red-300' : 'bg-zinc-800 text-zinc-500'"
-                            ></div>
-
-                            {{-- Minimized: thin bar --}}
-                            <div
-                                x-show="minimized"
-                                class="h-[3px] w-16 overflow-hidden rounded-full bg-zinc-700"
+                                x-show="loaded"
+                                wire:click="focusTerminal('{{ $expandedSession->id }}')"
+                                class="relative w-full cursor-pointer overflow-hidden rounded-lg border border-zinc-700 transition hover:border-cyan-500"
+                                style="max-height: 260px;"
+                                title="Click to focus Terminal"
                             >
-                                <div
-                                    class="h-full rounded-full transition-all duration-1000"
-                                    :class="remaining <= 60 ? 'bg-red-500' : 'bg-zinc-500'"
-                                    :style="'width:' + progress + '%'"
-                                ></div>
+                                <img
+                                    :src="'{{ route('orca.terminal-screenshot', $expandedSession->id) }}?t=' + timestamp"
+                                    alt="Terminal preview"
+                                    class="w-full"
+                                    x-on:load="loaded = true"
+                                    x-on:error="loaded = false"
+                                />
+                                {{-- Elapsed timer overlay --}}
+                                <div class="pointer-events-none absolute top-1.5 right-1.5 z-10 rounded-full bg-red-600/90 px-2 py-0.5 font-mono text-[10px] tabular-nums text-white" x-text="elapsed"></div>
+                                {{-- Fade-out gradient at bottom edge --}}
+                                <div class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-zinc-900 to-transparent"></div>
                             </div>
-                        </div>
-                    @endif
 
-                    {{-- Messages area --}}
-                    @if ($expandedSession->isClaude() && $expandedSession->isPoppedOut())
-                        <div class="flex flex-1 flex-col items-center justify-center gap-3 p-6">
-                            <span class="relative flex h-3 w-3">
-                                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
-                                <span class="relative inline-flex h-3 w-3 rounded-full bg-cyan-500"></span>
-                            </span>
-                            <span class="text-sm font-medium text-cyan-400">Running in Terminal</span>
-                            <span class="text-xs text-zinc-500">Session will update when Claude exits</span>
+                            {{-- Fallback: pulsing dot + text (shown until screenshot loads) --}}
+                            <template x-if="!loaded">
+                                <div class="flex flex-col items-center gap-3 py-4">
+                                    <span class="relative flex h-3 w-3">
+                                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
+                                        <span class="relative inline-flex h-3 w-3 rounded-full bg-cyan-500"></span>
+                                    </span>
+                                    <span class="text-sm font-medium text-cyan-400">Running in Terminal</span>
+                                    <span class="text-xs text-zinc-500">Screenshot will appear shortly...</span>
+                                </div>
+                            </template>
+
+                            {{-- Focus terminal link --}}
+                            <button
+                                wire:click="focusTerminal('{{ $expandedSession->id }}')"
+                                class="mt-1 text-xs text-zinc-500 transition hover:text-cyan-400"
+                            >
+                                Focus Terminal
+                            </button>
                         </div>
                     @elseif ($expandedSession->isClaude())
                         <div
@@ -261,12 +269,14 @@
                                         capturing: false,
                                         thumbnailUrl: null,
                                         annotator: null,
+                                        annotateMode: 'click',
 
-                                        startAnnotation() {
+                                        startAnnotation(mode = 'click') {
                                             if (!this.annotator) {
                                                 this.annotator = new window.OrcaAnnotator();
                                             }
-                                            this.annotator.enable();
+                                            this.annotateMode = mode;
+                                            this.annotator.enable(mode);
                                             this.annotating = true;
                                         },
 
@@ -332,7 +342,7 @@
                                 >
                                     {{-- Annotation mode indicator --}}
                                     <div x-show="annotating" x-cloak class="mb-2 flex items-center gap-2">
-                                        <span class="text-xs text-amber-400 italic">Click an element or select text...</span>
+                                        <span class="text-xs text-amber-400 italic" x-text="annotateMode === 'crop' ? 'Drag to select an area...' : 'Click an element or select text...'"></span>
                                         <flux:button
                                             type="button"
                                             size="sm"
@@ -381,9 +391,14 @@
                                             autocomplete="off"
                                         >
                                             <x-slot name="iconTrailing">
-                                                <button type="button" x-on:click="startAnnotation()" x-show="!thumbnailUrl && !annotating" class="text-zinc-400 transition hover:text-cyan-400">
-                                                    <flux:icon name="camera" variant="micro" class="size-3.5" />
-                                                </button>
+                                                <div class="flex items-center gap-1" x-show="!thumbnailUrl && !annotating">
+                                                    <button type="button" x-on:click="startAnnotation('click')" class="text-zinc-400 transition hover:text-cyan-400" title="Annotate element">
+                                                        <flux:icon name="camera" variant="micro" class="size-3.5" />
+                                                    </button>
+                                                    <button type="button" x-on:click="startAnnotation('crop')" class="text-zinc-400 transition hover:text-cyan-400" title="Crop area">
+                                                        <flux:icon name="scissors" variant="micro" class="size-3.5" />
+                                                    </button>
+                                                </div>
                                             </x-slot>
                                         </flux:input>
                                         <flux:button type="submit" size="sm" variant="primary" icon="paper-airplane" />
@@ -455,52 +470,69 @@
 
             {{-- Taskbar strip --}}
             <div class="flex items-center gap-1.5 border-t border-zinc-200 bg-white/80 px-3 py-1.5 backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/80" @if ($hasActiveSessions) wire:poll.1s @endif>
-                @foreach ($sessions as $session)
-                    <button
-                        wire:key="pill-{{ $session->id }}"
-                        wire:click="toggleSession('{{ $session->id }}')"
-                        @class([
-                            'group relative flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition',
-                            'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900' => $expandedSessionId === $session->id,
-                            'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800' => $expandedSessionId !== $session->id,
-                            'opacity-60' => $session->status->isTerminal(),
-                        ])
-                    >
-                        @include('orca::livewire.partials.status-dot', ['status' => $session->status])
-                        @if ($session->isClaude())
-                            @include('orca::livewire.partials.permission-badge', ['session' => $session])
-                        @endif
-                        <span class="max-w-[120px] truncate">
-                            {{ $session->isClaude() ? Str::limit($session->parent?->prompt ?? $session->prompt, 20) : Str::limit($session->command, 20) }}
-                        </span>
-
-                        @if ($session->status->isTerminal())
-                            <span
-                                wire:click.stop="dismiss('{{ $session->id }}')"
-                                class="ml-0.5 hidden rounded p-0.5 hover:bg-zinc-200 group-hover:inline-flex dark:hover:bg-zinc-700"
-                                title="Dismiss"
-                            >
-                                <flux:icon name="x-mark" variant="micro" class="size-3" />
+                {{-- Scrollable pills area --}}
+                <div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+                    @foreach ($sessions as $session)
+                        <button
+                            wire:key="pill-{{ $session->id }}"
+                            wire:click="toggleSession('{{ $session->id }}')"
+                            @class([
+                                'group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition',
+                                'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900' => $expandedSessionId === $session->id,
+                                'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800' => $expandedSessionId !== $session->id,
+                                'opacity-60' => $session->status->isTerminal(),
+                            ])
+                        >
+                            @include('orca::livewire.partials.status-dot', ['status' => $session->status])
+                            @if ($session->isClaude())
+                                @include('orca::livewire.partials.permission-badge', ['session' => $session])
+                            @endif
+                            <span class="max-w-[120px] truncate">
+                                {{ $session->isClaude() ? Str::limit($session->parent?->prompt ?? $session->prompt, 20) : Str::limit($session->command, 20) }}
                             </span>
-                        @endif
-                    </button>
-                @endforeach
 
-                <div class="relative ml-auto">
-                    <button
-                        wire:click="toggleLauncher"
-                        @class([
-                            'flex h-8 w-8 items-center justify-center rounded-lg transition',
-                            'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900' => $launcherOpen,
-                            'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800' => ! $launcherOpen,
-                        ])
-                    >
-                        <flux:icon name="plus" variant="mini" class="size-4" />
-                    </button>
+                            @if ($session->status->isTerminal())
+                                <span
+                                    wire:click.stop="dismiss('{{ $session->id }}')"
+                                    class="ml-0.5 hidden rounded p-0.5 hover:bg-zinc-200 group-hover:inline-flex dark:hover:bg-zinc-700"
+                                    title="Dismiss"
+                                >
+                                    <flux:icon name="x-mark" variant="micro" class="size-3" />
+                                </span>
+                            @endif
+                        </button>
+                    @endforeach
+                </div>
 
-                    @if ($launcherOpen)
-                        @include('orca::livewire.partials.launcher-popover')
+                {{-- Fixed actions --}}
+                <div class="flex shrink-0 items-center gap-1">
+                    @if ($sessions->contains(fn ($s) => $s->status->isTerminal()))
+                        <button
+                            wire:click="clearAll"
+                            class="flex h-8 items-center gap-1 rounded-lg px-2 text-xs text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-white"
+                            title="Clear completed sessions"
+                        >
+                            <flux:icon name="x-mark" variant="micro" class="size-3.5" />
+                            <span class="hidden sm:inline">Clear</span>
+                        </button>
                     @endif
+
+                    <div class="relative">
+                        <button
+                            wire:click="toggleLauncher"
+                            @class([
+                                'flex h-8 w-8 items-center justify-center rounded-lg transition',
+                                'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900' => $launcherOpen,
+                                'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800' => ! $launcherOpen,
+                            ])
+                        >
+                            <flux:icon name="plus" variant="mini" class="size-4" />
+                        </button>
+
+                        @if ($launcherOpen)
+                            @include('orca::livewire.partials.launcher-popover')
+                        @endif
+                    </div>
                 </div>
             </div>
         </div>
