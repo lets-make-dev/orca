@@ -1,7 +1,7 @@
 .PHONY: build clean
 
 build:
-	GOOS=darwin go build -o orca-terminal .
+	GOOS=darwin GOARCH=arm64 go build -o orca-terminal .
 
 clean:
 	rm -f orca-terminal

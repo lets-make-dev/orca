@@ -124,8 +124,7 @@ class PopOutTerminalService
 
         return <<<BASH
 #!/bin/bash
-echo -e "\\033[90m▸ {$mode} mode\\033[0m"
-echo -e "\\033[90m▸ {$claudeCmd}\\033[0m"
+clear
 exec {$argsStr}
 BASH;
     }

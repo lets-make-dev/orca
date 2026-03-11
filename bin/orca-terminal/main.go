@@ -62,6 +62,10 @@ func main() {
 		screenshotLoop.trigger()
 	}
 
+	// Channels for injecting into the PTY from the socket
+	injectCh := make(chan string, 10)
+	rawKeyCh := make(chan byte, 10)
+
 	// Handle signals for clean shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -71,9 +75,20 @@ func main() {
 		socketServer.close()
 	}()
 
+	// Wire up text injection from socket to PTY
+	socketServer.onInject = func(text string) {
+		injectCh <- text
+	}
+
+	// Wire up raw key from socket to PTY
+	socketServer.onRawKey = func(key byte) {
+		rawKeyCh <- key
+	}
+
 	// Run Claude via PTY
 	transcriptPath := fmt.Sprintf("%s/orca_transcript_%s.txt", *tempDir, *sessionID)
-	exitCode := runPTY(*claudeCmd, *prompt, *promptDelay, transcriptPath)
+	debugLogPath := fmt.Sprintf("%s/orca_scanner_debug_%s.log", *tempDir, *sessionID)
+	exitCode := runPTY(*claudeCmd, *prompt, *promptDelay, transcriptPath, debugLogPath, injectCh, rawKeyCh)
 
 	// POST callback
 	postCallback(*callbackURL, *sessionID, exitCode, transcriptPath)

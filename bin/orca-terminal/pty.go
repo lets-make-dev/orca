@@ -13,7 +13,7 @@ import (
 	"golang.org/x/term"
 )
 
-func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath string) int {
+func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath string, debugLogPath string, injectCh <-chan string, rawKeyCh <-chan byte) int {
 	// Open transcript file for tee-ing output
 	transcriptFile, err := os.Create(transcriptPath)
 	if err != nil {
@@ -23,6 +23,11 @@ func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath str
 	if transcriptFile != nil {
 		defer transcriptFile.Close()
 	}
+
+	// Print toolbar hint and enable mouse tracking
+	printToolbar()
+	enableMouse()
+	defer disableMouse()
 
 	// Start command via PTY
 	cmd := exec.Command("sh", "-c", cmdStr)
@@ -45,7 +50,7 @@ func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath str
 	// Initial resize
 	sigwinch <- syscall.SIGWINCH
 
-	// Set stdin to raw mode (only works when attached to a real terminal)
+	// Set stdin to raw mode
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		log.Printf("Warning: cannot set raw mode (not a terminal?): %v", err)
@@ -55,27 +60,43 @@ func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath str
 		defer term.Restore(int(os.Stdin.Fd()), oldState)
 	}
 
-	// Copy stdin -> PTY
+	// Copy stdin -> PTY (with hotkey/mouse interception)
 	go func() {
-		io.Copy(ptmx, os.Stdin)
+		stdinInterceptor(ptmx)
 	}()
 
-	// Copy PTY -> stdout + transcript
-	var writer io.Writer
+	// Copy PTY -> stdout + transcript, with output scanning for session ID
+	var baseWriter io.Writer
 	if transcriptFile != nil {
-		writer = io.MultiWriter(os.Stdout, transcriptFile)
+		baseWriter = io.MultiWriter(os.Stdout, transcriptFile)
 	} else {
-		writer = os.Stdout
+		baseWriter = os.Stdout
 	}
+	scanner := newOutputScanner(baseWriter, debugLogPath)
+	defer scanner.closeDebug()
 	go func() {
-		io.Copy(writer, ptmx)
+		io.Copy(scanner, ptmx)
 	}()
 
-	// Auto-send prompt after delay
+	// Listen for injected text from socket
+	go func() {
+		for text := range injectCh {
+			injectCommand(ptmx, text)
+		}
+	}()
+
+	// Listen for raw keypress from socket
+	go func() {
+		for key := range rawKeyCh {
+			ptmx.Write([]byte{key})
+		}
+	}()
+
+	// Auto-send prompt after delay using the same Escape→Enter submission
 	if prompt != "" {
 		go func() {
 			time.Sleep(time.Duration(promptDelaySec) * time.Second)
-			ptmx.Write([]byte(prompt + "\n"))
+			injectCommand(ptmx, prompt)
 		}()
 	}
 

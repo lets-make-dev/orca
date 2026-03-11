@@ -16,6 +16,8 @@ type socketServer struct {
 	windowID     int
 	listener     net.Listener
 	onScreenshot func()
+	onInject     func(text string)
+	onRawKey     func(key byte)
 	closeOnce    sync.Once
 }
 
@@ -77,8 +79,22 @@ func (s *socketServer) handleConn(conn net.Conn) {
 		}
 		fmt.Fprintln(conn, "ok")
 
+	case "escape":
+		if s.onRawKey != nil {
+			s.onRawKey(0x1b)
+		}
+		fmt.Fprintln(conn, "ok")
+
 	default:
-		fmt.Fprintln(conn, "unknown command")
+		if strings.HasPrefix(cmd, "inject ") {
+			text := strings.TrimPrefix(cmd, "inject ")
+			if s.onInject != nil {
+				s.onInject(text)
+			}
+			fmt.Fprintln(conn, "ok")
+		} else {
+			fmt.Fprintln(conn, "unknown command")
+		}
 	}
 }
 

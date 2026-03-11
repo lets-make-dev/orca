@@ -398,6 +398,18 @@ class Launcher extends Component
         $this->launcherOpen = false;
     }
 
+    public function injectText(string $id, string $text): void
+    {
+        $session = OrcaSession::find($id);
+
+        if (! $session || $session->status !== OrcaSessionStatus::PoppedOut) {
+            return;
+        }
+
+        $service = app(PopOutTerminalService::class);
+        $service->sendSocketCommand($id, 'inject '.$text);
+    }
+
     public function focusTerminal(string $id): void
     {
         $session = OrcaSession::find($id);
