@@ -2,6 +2,7 @@
 
 namespace MakeDev\Orca\Livewire;
 
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -57,10 +58,14 @@ class Launcher extends Component
         $this->launcherOpen = false;
     }
 
-    public function toggleLauncher(): void
+    public function toggleLauncher(string $sourceUrl = ''): void
     {
         $this->launcherOpen = ! $this->launcherOpen;
         $this->expandedSessionId = '';
+
+        if ($this->launcherOpen && $sourceUrl) {
+            $this->sourceUrl = $sourceUrl;
+        }
     }
 
     public function launch(): void
@@ -401,15 +406,34 @@ class Launcher extends Component
             return;
         }
 
-        $escapedId = escapeshellarg("orca-{$id}");
+        $service = app(PopOutTerminalService::class);
+
+        // Try socket command first (Go binary)
+        $response = $service->sendSocketCommand($id, 'focus');
+        if ($response !== null) {
+            return;
+        }
+
+        // Fallback: direct osascript for legacy bash wrapper
+        $windowIdFile = sys_get_temp_dir().'/orca_window_'.$id.'.txt';
+
+        if (! file_exists($windowIdFile)) {
+            return;
+        }
+
+        $windowId = (int) trim(file_get_contents($windowIdFile));
+
+        if ($windowId <= 0) {
+            return;
+        }
 
         exec('osascript -e '.escapeshellarg(
-            'tell application "Terminal" to activate'."\n".
-            'tell application "System Events" to tell process "Terminal"'."\n".
-            '  set frontmost to true'."\n".
+            'tell application "Terminal"'."\n".
+            '  activate'."\n".
             '  repeat with w in windows'."\n".
-            '    if name of w contains '.$escapedId.' then'."\n".
-            '      perform action "AXRaise" of w'."\n".
+            '    if id of w is '.$windowId.' then'."\n".
+            '      set index of w to 1'."\n".
+            '      return'."\n".
             '    end if'."\n".
             '  end repeat'."\n".
             'end tell'
@@ -631,7 +655,7 @@ class Launcher extends Component
         return $this->toolPhraseText;
     }
 
-    public function render(): \Illuminate\Contracts\View\View
+    public function render(): View
     {
         $sessions = $this->getSessions();
 

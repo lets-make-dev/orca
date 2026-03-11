@@ -3,7 +3,7 @@
         {{-- Empty state: floating "+" button --}}
         <div class="fixed right-4 bottom-4 z-50">
             <button
-                wire:click="toggleLauncher"
+                x-on:click="$wire.toggleLauncher(window.location.href)"
                 class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900 text-white shadow-lg transition hover:bg-zinc-700"
             >
                 <flux:icon name="plus" variant="mini" class="size-5" />
@@ -341,27 +341,40 @@
                                     @screenshot-cleared.window="if (thumbnailUrl) { URL.revokeObjectURL(thumbnailUrl); thumbnailUrl = null; }"
                                 >
                                     {{-- Annotation mode indicator --}}
-                                    <div x-show="annotating" x-cloak class="mb-2 flex items-center gap-2">
-                                        <span class="text-xs text-amber-400 italic" x-text="annotateMode === 'crop' ? 'Drag to select an area...' : 'Click an element or select text...'"></span>
-                                        <flux:button
-                                            type="button"
-                                            size="sm"
-                                            variant="primary"
-                                            icon="camera"
-                                            x-on:click="captureScreenshot()"
-                                            x-bind:disabled="capturing"
-                                        >
-                                            <span x-show="!capturing">Capture</span>
-                                            <span x-show="capturing">Saving...</span>
-                                        </flux:button>
-                                        <flux:button
-                                            type="button"
-                                            size="sm"
-                                            variant="ghost"
-                                            x-on:click="cancelAnnotation()"
-                                        >
-                                            Cancel
-                                        </flux:button>
+                                    <div x-show="annotating" x-cloak class="mb-2 space-y-1">
+                                        <span class="block text-xs text-amber-400 italic" x-text="annotateMode === 'crop' ? 'Drag to select an area...' : 'Click an element or select text...'"></span>
+                                        <div class="flex items-center gap-1.5">
+                                            <button
+                                                type="button"
+                                                x-on:click="startAnnotation(annotateMode === 'crop' ? 'click' : 'crop')"
+                                                class="flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium transition"
+                                                x-bind:class="annotateMode === 'crop'
+                                                    ? 'bg-amber-500/15 text-amber-400'
+                                                    : 'text-zinc-400 hover:text-zinc-200'"
+                                                title="Toggle crop mode"
+                                            >
+                                                <flux:icon name="scissors" variant="micro" class="size-3" />
+                                                <span>Crop</span>
+                                            </button>
+                                            <div class="flex-1"></div>
+                                            <button
+                                                type="button"
+                                                x-on:click="captureScreenshot()"
+                                                x-bind:disabled="capturing"
+                                                class="flex items-center gap-1 rounded bg-white px-2 py-1 text-xs font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:opacity-50"
+                                            >
+                                                <flux:icon name="camera" variant="micro" class="size-3" />
+                                                <span x-show="!capturing">Capture</span>
+                                                <span x-show="capturing">Saving...</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                x-on:click="cancelAnnotation()"
+                                                class="rounded px-2 py-1 text-xs font-medium text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {{-- Screenshot thumbnail preview --}}
@@ -391,14 +404,9 @@
                                             autocomplete="off"
                                         >
                                             <x-slot name="iconTrailing">
-                                                <div class="flex items-center gap-1" x-show="!thumbnailUrl && !annotating">
-                                                    <button type="button" x-on:click="startAnnotation('click')" class="text-zinc-400 transition hover:text-cyan-400" title="Annotate element">
-                                                        <flux:icon name="camera" variant="micro" class="size-3.5" />
-                                                    </button>
-                                                    <button type="button" x-on:click="startAnnotation('crop')" class="text-zinc-400 transition hover:text-cyan-400" title="Crop area">
-                                                        <flux:icon name="scissors" variant="micro" class="size-3.5" />
-                                                    </button>
-                                                </div>
+                                                <button type="button" x-on:click="startAnnotation('click')" x-show="!thumbnailUrl && !annotating" class="text-zinc-400 transition hover:text-cyan-400">
+                                                    <flux:icon name="camera" variant="micro" class="size-3.5" />
+                                                </button>
                                             </x-slot>
                                         </flux:input>
                                         <flux:button type="submit" size="sm" variant="primary" icon="paper-airplane" />
@@ -473,34 +481,76 @@
                 {{-- Scrollable pills area --}}
                 <div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
                     @foreach ($sessions as $session)
-                        <button
+                        <div
                             wire:key="pill-{{ $session->id }}"
-                            wire:click="toggleSession('{{ $session->id }}')"
-                            @class([
-                                'group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition',
-                                'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900' => $expandedSessionId === $session->id,
-                                'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800' => $expandedSessionId !== $session->id,
-                                'opacity-60' => $session->status->isTerminal(),
-                            ])
+                            @if ($session->isPoppedOut() && $expandedSessionId !== $session->id)
+                                x-data="{ hovering: false, ts: Date.now(), pos: { left: 0, top: 0 } }"
+                                x-on:mouseenter="
+                                    hovering = true;
+                                    ts = Date.now();
+                                    let rect = $el.getBoundingClientRect();
+                                    pos = { left: rect.left + rect.width / 2, top: rect.top };
+                                "
+                                x-on:mouseleave="hovering = false"
+                            @endif
                         >
-                            @include('orca::livewire.partials.status-dot', ['status' => $session->status])
-                            @if ($session->isClaude())
-                                @include('orca::livewire.partials.permission-badge', ['session' => $session])
-                            @endif
-                            <span class="max-w-[120px] truncate">
-                                {{ $session->isClaude() ? Str::limit($session->parent?->prompt ?? $session->prompt, 20) : Str::limit($session->command, 20) }}
-                            </span>
-
-                            @if ($session->status->isTerminal())
-                                <span
-                                    wire:click.stop="dismiss('{{ $session->id }}')"
-                                    class="ml-0.5 hidden rounded p-0.5 hover:bg-zinc-200 group-hover:inline-flex dark:hover:bg-zinc-700"
-                                    title="Dismiss"
-                                >
-                                    <flux:icon name="x-mark" variant="micro" class="size-3" />
+                            <button
+                                wire:click="toggleSession('{{ $session->id }}')"
+                                @class([
+                                    'group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition',
+                                    'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900' => $expandedSessionId === $session->id,
+                                    'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800' => $expandedSessionId !== $session->id,
+                                    'opacity-60' => $session->status->isTerminal(),
+                                ])
+                            >
+                                @include('orca::livewire.partials.status-dot', ['status' => $session->status])
+                                @if ($session->isClaude())
+                                    @include('orca::livewire.partials.permission-badge', ['session' => $session])
+                                @endif
+                                <span class="max-w-[120px] truncate">
+                                    {{ $session->isClaude() ? Str::limit($session->parent?->prompt ?? $session->prompt, 20) : Str::limit($session->command, 20) }}
                                 </span>
+
+                                @if ($session->status->isTerminal())
+                                    <span
+                                        wire:click.stop="dismiss('{{ $session->id }}')"
+                                        class="ml-0.5 hidden rounded p-0.5 hover:bg-zinc-200 group-hover:inline-flex dark:hover:bg-zinc-700"
+                                        title="Dismiss"
+                                    >
+                                        <flux:icon name="x-mark" variant="micro" class="size-3" />
+                                    </span>
+                                @endif
+                            </button>
+
+                            {{-- Hover thumbnail preview (fixed position to escape overflow clip) --}}
+                            @if ($session->isPoppedOut() && $expandedSessionId !== $session->id)
+                                <template x-teleport="body">
+                                    <div
+                                        x-show="hovering"
+                                        x-cloak
+                                        x-transition:enter="transition ease-out duration-150"
+                                        x-transition:enter-start="opacity-0 translate-y-1"
+                                        x-transition:enter-end="opacity-100 translate-y-0"
+                                        x-transition:leave="transition ease-in duration-100"
+                                        x-transition:leave-start="opacity-100 translate-y-0"
+                                        x-transition:leave-end="opacity-0 translate-y-1"
+                                        class="pointer-events-none fixed z-[9999]"
+                                        :style="`left: ${pos.left}px; top: ${pos.top}px; transform: translate(-50%, -100%); margin-top: -8px;`"
+                                    >
+                                        <div class="w-52 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl">
+                                            <div class="relative overflow-hidden" style="max-height: 120px;">
+                                                <img
+                                                    :src="'{{ route('orca.terminal-screenshot', $session->id) }}?t=' + ts"
+                                                    alt="Terminal preview"
+                                                    class="w-full"
+                                                />
+                                                <div class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-zinc-900 to-transparent"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
                             @endif
-                        </button>
+                        </div>
                     @endforeach
                 </div>
 
@@ -519,7 +569,7 @@
 
                     <div class="relative">
                         <button
-                            wire:click="toggleLauncher"
+                            x-on:click="$wire.toggleLauncher(window.location.href)"
                             @class([
                                 'flex h-8 w-8 items-center justify-center rounded-lg transition',
                                 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900' => $launcherOpen,

@@ -1,4 +1,5 @@
 <div
+    wire:ignore
     class="absolute right-0 bottom-full mb-2 w-80 rounded-xl border border-zinc-200 bg-white p-4 shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
     x-data="{
         annotating: false,
@@ -133,7 +134,6 @@
         },
     }"
     x-on:orca-annotator-cancelled.window="annotating = false"
-    x-init="$wire.set('sourceUrl', window.location.href)"
 >
     <form x-on:submit.prevent="submitPlan()" class="space-y-2">
         <template x-if="!annotating">
@@ -245,26 +245,15 @@
 
         {{-- Annotation controls --}}
         <div class="flex items-center gap-2" x-show="!annotating">
-            <div class="flex items-center gap-1" x-show="!thumbnailUrl">
-                <flux:button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    icon="camera"
-                    x-on:click="startAnnotation('click')"
-                >
-                    Annotate
-                </flux:button>
-                <flux:button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    icon="scissors"
-                    x-on:click="startAnnotation('crop')"
-                >
-                    Crop
-                </flux:button>
-            </div>
+            <button
+                type="button"
+                x-on:click="startAnnotation('click')"
+                x-show="!thumbnailUrl"
+                class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            >
+                <flux:icon name="camera" variant="micro" class="size-3.5" />
+                Annotate
+            </button>
 
             <div class="flex flex-1 items-center gap-2">
                 <flux:button type="submit" size="sm" variant="primary" icon="play" class="flex-1">
@@ -277,27 +266,40 @@
         </div>
 
         {{-- Active annotation mode --}}
-        <div x-show="annotating" class="flex items-center gap-2">
-            <span class="text-xs text-amber-400 italic" x-text="annotateMode === 'crop' ? 'Drag to select an area...' : 'Click an element or select text...'"></span>
-            <flux:button
-                type="button"
-                size="sm"
-                variant="primary"
-                icon="camera"
-                x-on:click="captureScreenshot()"
-                x-bind:disabled="capturing"
-            >
-                <span x-show="!capturing">Capture</span>
-                <span x-show="capturing">Saving...</span>
-            </flux:button>
-            <flux:button
-                type="button"
-                size="sm"
-                variant="ghost"
-                x-on:click="cancelAnnotation()"
-            >
-                Cancel
-            </flux:button>
+        <div x-show="annotating" class="space-y-1.5">
+            <span class="block text-xs text-amber-400 italic" x-text="annotateMode === 'crop' ? 'Drag to select an area...' : 'Click an element or select text...'"></span>
+            <div class="flex items-center gap-1.5">
+                <button
+                    type="button"
+                    x-on:click="startAnnotation(annotateMode === 'crop' ? 'click' : 'crop')"
+                    class="flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium transition"
+                    x-bind:class="annotateMode === 'crop'
+                        ? 'bg-amber-500/15 text-amber-400'
+                        : 'text-zinc-400 hover:text-zinc-200'"
+                    title="Toggle crop mode"
+                >
+                    <flux:icon name="scissors" variant="micro" class="size-3" />
+                    <span>Crop</span>
+                </button>
+                <div class="flex-1"></div>
+                <button
+                    type="button"
+                    x-on:click="captureScreenshot()"
+                    x-bind:disabled="capturing"
+                    class="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+                >
+                    <flux:icon name="camera" variant="micro" class="size-3.5" />
+                    <span x-show="!capturing">Capture</span>
+                    <span x-show="capturing">Saving...</span>
+                </button>
+                <button
+                    type="button"
+                    x-on:click="cancelAnnotation()"
+                    class="rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                >
+                    Cancel
+                </button>
+            </div>
         </div>
     </form>
 </div>

@@ -10,12 +10,11 @@ import html2canvas from 'html2canvas-pro';
 class OrcaAnnotator {
     constructor() {
         this._annotation = null;   // { type, rect, ... }
-        this._overlayEl = null;
-        this._pinEl = null;
         this._enabled = false;
         this._mode = 'click';
         this._isDragging = false;
         this._dragStart = null;
+        this._deferredEnable = null;
 
         // Bound handlers — click mode
         this._onClickCapture = this._handleClick.bind(this);
@@ -53,16 +52,25 @@ class OrcaAnnotator {
         this._enabled = true;
         this._mode = mode;
 
-        if (mode === 'crop') {
-            document.addEventListener('mousedown', this._onDragMouseDown, true);
-            document.addEventListener('mousemove', this._onDragMouseMove, true);
-            document.addEventListener('mouseup', this._onDragMouseUp, true);
-        } else {
-            document.addEventListener('click', this._onClickCapture, true);
-            document.addEventListener('mouseup', this._onTextMouseUp, true);
-        }
+        // Defer listener registration to the next frame so the click that
+        // triggered "Annotate" doesn't get caught by the capture-phase handler.
+        if (this._deferredEnable) cancelAnimationFrame(this._deferredEnable);
+        this._deferredEnable = requestAnimationFrame(() => {
+            this._deferredEnable = null;
+            if (!this._enabled) return;
 
-        document.addEventListener('keydown', this._onKeyDown, true);
+            if (mode === 'crop') {
+                document.addEventListener('mousedown', this._onDragMouseDown, true);
+                document.addEventListener('mousemove', this._onDragMouseMove, true);
+                document.addEventListener('mouseup', this._onDragMouseUp, true);
+            } else {
+                document.addEventListener('click', this._onClickCapture, true);
+                document.addEventListener('mouseup', this._onTextMouseUp, true);
+            }
+
+            document.addEventListener('keydown', this._onKeyDown, true);
+        });
+
         document.body.style.cursor = 'crosshair';
     }
 
@@ -71,6 +79,11 @@ class OrcaAnnotator {
         this._enabled = false;
         this._isDragging = false;
         this._dragStart = null;
+
+        if (this._deferredEnable) {
+            cancelAnimationFrame(this._deferredEnable);
+            this._deferredEnable = null;
+        }
 
         // Remove all listeners regardless of mode
         document.removeEventListener('click', this._onClickCapture, true);
@@ -102,8 +115,9 @@ class OrcaAnnotator {
             launcher.style.display = 'none';
         }
 
-        // Remove overlay so it doesn't appear in the screenshot
+        // Remove tracked overlay + any orphaned overlays from stale instances
         this._removeOverlay();
+        OrcaAnnotator.removeAllOverlays();
 
         // Small delay so the browser repaints
         await new Promise(r => setTimeout(r, 80));
@@ -273,8 +287,9 @@ class OrcaAnnotator {
         const isCrop = this._annotation.type === 'region';
 
         // Dashed overlay
-        this._overlayEl = document.createElement('div');
-        Object.assign(this._overlayEl.style, {
+        const overlay = document.createElement('div');
+        overlay.setAttribute('data-orca-overlay', '');
+        Object.assign(overlay.style, {
             position: 'absolute',
             top: rect.top + 'px',
             left: rect.left + 'px',
@@ -290,15 +305,17 @@ class OrcaAnnotator {
 
         // Dim the rest of the page in crop mode
         if (isCrop) {
-            this._overlayEl.style.boxShadow = '0 0 0 9999px rgba(0, 0, 0, 0.3)';
+            overlay.style.boxShadow = '0 0 0 9999px rgba(0, 0, 0, 0.3)';
         }
 
-        document.body.appendChild(this._overlayEl);
+        document.body.appendChild(overlay);
+        this._overlayEl = overlay;
 
         // Pin marker (top-right corner) for click mode only
         if (!isCrop) {
-            this._pinEl = document.createElement('div');
-            Object.assign(this._pinEl.style, {
+            const pin = document.createElement('div');
+            pin.setAttribute('data-orca-overlay', '');
+            Object.assign(pin.style, {
                 position: 'absolute',
                 top: (rect.top - 8) + 'px',
                 left: (rect.left + rect.width - 8) + 'px',
@@ -311,7 +328,8 @@ class OrcaAnnotator {
                 pointerEvents: 'none',
                 zIndex: '100000',
             });
-            document.body.appendChild(this._pinEl);
+            document.body.appendChild(pin);
+            this._pinEl = pin;
         }
     }
 
@@ -324,6 +342,14 @@ class OrcaAnnotator {
             this._pinEl.remove();
             this._pinEl = null;
         }
+    }
+
+    /**
+     * Remove ALL overlay elements from the DOM (including orphans from
+     * stale annotator instances that were lost during Livewire re-renders).
+     */
+    static removeAllOverlays() {
+        document.querySelectorAll('[data-orca-overlay]').forEach(el => el.remove());
     }
 
     /* ------------------------------------------------------------------ */

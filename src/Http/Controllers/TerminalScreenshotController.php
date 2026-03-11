@@ -34,7 +34,7 @@ class TerminalScreenshotController extends Controller
 
         // Crop: remove title bar (top ~4%) and scrollbar (right ~2%)
         $cropTop = 65;
-        $cropRight = (int) round($width - 65);
+        $cropRight = 65;
         $newWidth = $width - $cropRight;
         $newHeight = $height - $cropTop;
 
