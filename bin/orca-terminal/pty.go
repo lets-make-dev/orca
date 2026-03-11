@@ -73,6 +73,7 @@ func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath str
 		baseWriter = os.Stdout
 	}
 	scanner := newOutputScanner(baseWriter, debugLogPath)
+	globalScanner = scanner
 	defer scanner.closeDebug()
 	go func() {
 		io.Copy(scanner, ptmx)
