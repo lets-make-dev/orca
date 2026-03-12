@@ -20,11 +20,21 @@ func main() {
 	screenshotDelay := flag.Int("screenshot-delay", 4, "Initial delay before screenshots start")
 	workingDir := flag.String("working-dir", "", "Working directory (default: cwd)")
 	tempDir := flag.String("temp-dir", os.TempDir(), "Temp directory for screenshots, transcripts, socket")
+	sessionIDWebhook := flag.String("session-id-webhook", "", "POST webhook URL when Claude session ID is captured")
+	modifiedFilesWebhook := flag.String("modified-files-webhook", "", "POST webhook URL for modified files list")
 	flag.Parse()
 
 	if *sessionID == "" || *claudeCmd == "" || *callbackURL == "" {
 		fmt.Fprintln(os.Stderr, "Usage: orca-terminal --session-id <id> --claude-cmd <cmd> --callback-url <url>")
 		os.Exit(1)
+	}
+
+	if *sessionIDWebhook != "" {
+		sessionIDWebhookURL = *sessionIDWebhook
+	}
+
+	if *modifiedFilesWebhook != "" {
+		modifiedFilesWebhookURL = *modifiedFilesWebhook
 	}
 
 	if *workingDir != "" {

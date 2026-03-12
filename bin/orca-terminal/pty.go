@@ -24,8 +24,9 @@ func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath str
 		defer transcriptFile.Close()
 	}
 
-	// Print toolbar hint and enable mouse tracking
-	printToolbar()
+	// Draw fixed toolbar and set up scroll region, then enable mouse tracking
+	initToolbar()
+	defer resetToolbar()
 	enableMouse()
 	defer disableMouse()
 
@@ -42,7 +43,11 @@ func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath str
 	signal.Notify(sigwinch, syscall.SIGWINCH)
 	go func() {
 		for range sigwinch {
-			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
+			// Redraw toolbar and reset scroll region for new dimensions
+			refreshToolbar()
+			// Report adjusted size (rows-1) so Claude stays within the scroll region
+			cols, rows := adjustedPTYSize()
+			if err := pty.Setsize(ptmx, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
 				log.Printf("Error resizing PTY: %v", err)
 			}
 		}
@@ -100,13 +105,21 @@ func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath str
 		}
 	}()
 
-	// Auto-send prompt after delay using the same Escape→Enter submission
-	if prompt != "" {
-		go func() {
-			time.Sleep(time.Duration(promptDelaySec) * time.Second)
+	// Auto-run /status first to capture session ID, then inject prompt
+	go func() {
+		time.Sleep(time.Duration(promptDelaySec) * time.Second)
+
+		// Always run /status to capture session ID
+		log.Printf("[orca] auto-triggering /status to capture session ID")
+		runHotkey(ptmx, 0) // blocks until session ID captured or timeout
+
+		// Then inject the user's prompt if provided
+		if prompt != "" {
+			time.Sleep(1 * time.Second) // let /status dismiss settle
+			log.Printf("[orca] injecting prompt")
 			injectCommand(ptmx, prompt)
-		}()
-	}
+		}
+	}()
 
 	// Wait for command to exit
 	exitCode := 0

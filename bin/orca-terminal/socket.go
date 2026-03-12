@@ -92,6 +92,10 @@ func (s *socketServer) handleConn(conn net.Conn) {
 		}
 		fmt.Fprintln(conn, "ok")
 
+	case "modified-files":
+		go postModifiedFiles()
+		fmt.Fprintln(conn, "ok")
+
 	case "session-id":
 		toolbarMu.Lock()
 		id := claudeSessionID
