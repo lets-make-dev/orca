@@ -518,7 +518,8 @@
                     @foreach ($sessions as $session)
                         <div
                             wire:key="pill-{{ $session->id }}"
-                            @if ($session->isPoppedOut() && $expandedSessionId !== $session->id)
+                            @if ($expandedSessionId === $session->id) class="hidden" @endif
+                            @if ($session->isPoppedOut())
                                 x-data="{ hoverPill: false, hoverThumb: false, ts: Date.now(), pos: { left: 0, top: 0 }, get hovering() { return this.hoverPill || this.hoverThumb } }"
                                 x-on:mouseenter="
                                     hoverPill = true;
@@ -533,8 +534,7 @@
                                 wire:click="toggleSession('{{ $session->id }}')"
                                 @class([
                                     'group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition',
-                                    'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900' => $expandedSessionId === $session->id,
-                                    'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800' => $expandedSessionId !== $session->id,
+                                    'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800',
                                     'opacity-60' => $session->status->isTerminal(),
                                 ])
                             >
@@ -571,7 +571,7 @@
                             </button>
 
                             {{-- Hover thumbnail preview (fixed position to escape overflow clip) --}}
-                            @if ($session->isPoppedOut() && $expandedSessionId !== $session->id)
+                            @if ($session->isPoppedOut())
                                 <template x-teleport="body">
                                     <div
                                         x-show="hovering"
