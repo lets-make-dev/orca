@@ -488,14 +488,15 @@ class Launcher extends Component
 
         exec('osascript -e '.escapeshellarg(
             'tell application "Terminal"'."\n".
-            '  activate'."\n".
             '  repeat with w in windows'."\n".
             '    if id of w is '.$windowId.' then'."\n".
             '      set index of w to 1'."\n".
-            '      return'."\n".
+            '    else'."\n".
+            '      set miniaturized of w to true'."\n".
             '    end if'."\n".
             '  end repeat'."\n".
-            'end tell'
+            'end tell'."\n".
+            'tell application "System Events" to set frontmost of process "Terminal" to true'
         ).' > /dev/null 2>&1 &');
     }
 

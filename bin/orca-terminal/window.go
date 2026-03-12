@@ -26,14 +26,15 @@ func captureWindowID() (int, error) {
 func focusWindow(windowID int) error {
 	script := fmt.Sprintf(`
 tell application "Terminal"
-	activate
 	repeat with w in windows
 		if id of w is %d then
 			set index of w to 1
-			return
+		else
+			set miniaturized of w to true
 		end if
 	end repeat
-end tell`, windowID)
+end tell
+tell application "System Events" to set frontmost of process "Terminal" to true`, windowID)
 
 	return exec.Command("osascript", "-e", script).Run()
 }
