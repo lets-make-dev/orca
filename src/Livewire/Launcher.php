@@ -8,7 +8,6 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Session;
-use Livewire\Component;
 use MakeDev\Orca\Enums\OrcaSessionStatus;
 use MakeDev\Orca\Enums\OrcaSessionType;
 use MakeDev\Orca\Jobs\RunClaudeSession;
@@ -18,13 +17,10 @@ use MakeDev\Orca\Services\ClaudeEventParser;
 use MakeDev\Orca\Services\PopOutTerminalService;
 use MakeDev\Orca\Services\RouteResolver;
 use MakeDev\Orca\Services\SessionChannel;
-use Modules\ModuleLoader\Concerns\HasModuleInfo;
-use Modules\ModuleLoader\Contracts\MakeDevModule;
+use Modules\ModuleLoader\Livewire\MakeDevModuleComponent;
 
-class Launcher extends Component implements MakeDevModule
+class Launcher extends MakeDevModuleComponent
 {
-    use HasModuleInfo;
-
     public string $command = '';
 
     public string $prompt = '';

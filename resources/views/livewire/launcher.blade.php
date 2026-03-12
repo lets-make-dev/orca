@@ -2,9 +2,9 @@
     @if ($sessions->isEmpty() && ! $launcherOpen)
         {{-- Empty state: floating "+" button --}}
         <div class="fixed right-4 bottom-4 z-50 flex items-center gap-1.5">
-            @if ($this->isModuleInfoEnabled())
-                @include('moduleloader::partials.module-skills', ['popoverPosition' => 'above'])
-            @endif
+            <x-moduleloader::skills-container popover-position="above">
+                @include('moduleloader::partials.power-off')
+            </x-moduleloader::skills-container>
 
             <button
                 x-on:click="$wire.toggleLauncher(window.location.href)"
@@ -621,10 +621,9 @@
 
                 {{-- Fixed actions --}}
                 <div class="flex shrink-0 items-center gap-1">
-                    @if ($this->isModuleInfoEnabled())
-                        @include('moduleloader::partials.copy-module-button', ['popoverPosition' => 'above'])
-                        @include('moduleloader::partials.module-info-cog', ['popoverPosition' => 'above'])
-                    @endif
+                    <x-moduleloader::skills-container popover-position="above">
+                        @include('moduleloader::partials.power-off')
+                    </x-moduleloader::skills-container>
 
                     @if ($sessions->contains(fn ($s) => $s->status->isTerminal()))
                         <button
