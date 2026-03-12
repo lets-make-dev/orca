@@ -3,7 +3,7 @@
         {{-- Empty state: floating "+" button --}}
         <div class="fixed right-4 bottom-4 z-50 flex items-center gap-1.5">
             @if ($this->isModuleInfoEnabled())
-                @include('moduleloader::partials.module-info-cog', ['popoverPosition' => 'above'])
+                @include('moduleloader::partials.module-skills', ['popoverPosition' => 'above'])
             @endif
 
             <button
@@ -622,6 +622,7 @@
                 {{-- Fixed actions --}}
                 <div class="flex shrink-0 items-center gap-1">
                     @if ($this->isModuleInfoEnabled())
+                        @include('moduleloader::partials.copy-module-button', ['popoverPosition' => 'above'])
                         @include('moduleloader::partials.module-info-cog', ['popoverPosition' => 'above'])
                     @endif
 

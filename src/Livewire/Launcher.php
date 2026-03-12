@@ -65,6 +65,52 @@ class Launcher extends Component implements MakeDevModule
         $this->expandedSessionId = '';
     }
 
+    #[On('orca:scaffold-module')]
+    public function scaffoldModule(array $sourceModule, string $newModuleName, string $newModuleDescription): void
+    {
+        $this->moduleContext = $sourceModule;
+        $this->prompt = $this->buildScaffoldPrompt($sourceModule, $newModuleName, $newModuleDescription);
+        $this->launcherOpen = true;
+        $this->expandedSessionId = '';
+    }
+
+    #[On('orca:scaffold-module-terminal')]
+    public function scaffoldModuleInTerminal(array $sourceModule, string $newModuleName, string $newModuleDescription): void
+    {
+        $service = app(PopOutTerminalService::class);
+
+        $prompt = $this->buildScaffoldPrompt($sourceModule, $newModuleName, $newModuleDescription);
+        $this->moduleContext = $sourceModule;
+        $prompt = $this->appendModuleContext($prompt);
+
+        if (! $service->isAvailable()) {
+            $this->prompt = $prompt;
+            $this->launcherOpen = true;
+            $this->expandedSessionId = '';
+            $this->moduleContext = [];
+
+            return;
+        }
+
+        $session = OrcaSession::create([
+            'session_type' => OrcaSessionType::Claude,
+            'prompt' => $prompt,
+            'skip_permissions' => true,
+            'max_turns' => config('orca.claude.max_turns', 50),
+            'allowed_tools' => config('orca.claude.default_allowed_tools', []) ?: null,
+            'working_directory' => base_path(),
+            'status' => OrcaSessionStatus::PoppedOut,
+            'popped_out_at' => now(),
+        ]);
+
+        $service->popOut($session, request()->getSchemeAndHttpHost());
+
+        $this->prompt = '';
+        $this->moduleContext = [];
+        $this->expandedSessionId = $session->id;
+        $this->launcherOpen = false;
+    }
+
     public function toggleSession(string $id): void
     {
         $this->expandedSessionId = $this->expandedSessionId === $id ? '' : $id;
@@ -668,6 +714,36 @@ class Launcher extends Component implements MakeDevModule
         }
 
         return $prompt."\n\n---\n\n".implode("\n\n", $parts);
+    }
+
+    private function buildScaffoldPrompt(array $sourceModule, string $newModuleName, string $newModuleDescription): string
+    {
+        $sourceName = $sourceModule['name'] ?? 'Unknown';
+
+        $lines = ["Create a new module called \"{$newModuleName}\"."];
+
+        if ($newModuleDescription !== '') {
+            $lines[] = "Description: {$newModuleDescription}";
+        }
+
+        $lines[] = "Use the \"{$sourceName}\" module as a fully working example to reference for structure, patterns, and conventions.";
+
+        if (! empty($sourceModule['keyFiles'])) {
+            $lines[] = 'Key files to study:';
+            foreach ($sourceModule['keyFiles'] as $file) {
+                $lines[] = "- {$file}";
+            }
+        }
+
+        if (! empty($sourceModule['capabilities'])) {
+            $lines[] = 'Source module capabilities: '.implode(', ', $sourceModule['capabilities']);
+        }
+
+        if (! empty($sourceModule['dependencies'])) {
+            $lines[] = 'Source module dependencies: '.implode(', ', $sourceModule['dependencies']);
+        }
+
+        return implode("\n\n", $lines);
     }
 
     private function appendDebugContext(string $prompt): string
