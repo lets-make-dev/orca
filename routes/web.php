@@ -16,6 +16,10 @@ Route::post('orca/popout/return', [PopOutController::class, 'returned'])
     ->withoutMiddleware(VerifyCsrfToken::class)
     ->name('orca.popout.return');
 
+Route::post('orca/popout/heartbeat', [PopOutController::class, 'heartbeat'])
+    ->withoutMiddleware(VerifyCsrfToken::class)
+    ->name('orca.popout.heartbeat');
+
 Route::get('orca/terminal-screenshot/{session}', [TerminalScreenshotController::class, 'show'])
     ->name('orca.terminal-screenshot');
 

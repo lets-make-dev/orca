@@ -5,6 +5,8 @@ namespace MakeDev\Orca\Providers;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
+use MakeDev\Orca\Console\Commands\ClaudeHook;
+use MakeDev\Orca\Console\Commands\CleanupScreenshots;
 use MakeDev\Orca\Http\Middleware\InjectLauncher;
 use MakeDev\Orca\Livewire\Launcher;
 
@@ -37,7 +39,8 @@ class OrcaServiceProvider extends ServiceProvider
     protected function registerCommands(): void
     {
         $this->commands([
-            \MakeDev\Orca\Console\Commands\CleanupScreenshots::class,
+            CleanupScreenshots::class,
+            ClaudeHook::class,
         ]);
     }
 

@@ -26,6 +26,8 @@ return [
         'screenshot_interval' => 5,
         'screenshot_initial_delay' => 4,
         'prompt_delay' => 3,
+        'heartbeat_interval' => 10,
+        'heartbeat_stale_seconds' => 30,
     ],
 
     'auto_login' => [

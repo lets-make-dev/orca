@@ -18,7 +18,6 @@ type socketServer struct {
 	onScreenshot func()
 	onInject     func(text string)
 	onRawKey     func(key byte)
-	onStatus     func()
 	closeOnce    sync.Once
 }
 
@@ -83,12 +82,6 @@ func (s *socketServer) handleConn(conn net.Conn) {
 	case "escape":
 		if s.onRawKey != nil {
 			s.onRawKey(0x1b)
-		}
-		fmt.Fprintln(conn, "ok")
-
-	case "status":
-		if s.onStatus != nil {
-			go s.onStatus()
 		}
 		fmt.Fprintln(conn, "ok")
 

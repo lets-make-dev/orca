@@ -113,6 +113,13 @@ class PopOutTerminalService
             '--temp-dir', escapeshellarg($tempDir),
         ];
 
+        $heartbeatUrl = str_replace('/popout/return', '/popout/heartbeat', $callbackUrl);
+        $heartbeatInterval = (int) config('orca.popout.heartbeat_interval', 10);
+        $args[] = '--heartbeat-url';
+        $args[] = escapeshellarg($heartbeatUrl);
+        $args[] = '--heartbeat-interval';
+        $args[] = $heartbeatInterval;
+
         if ($interactive && $session->prompt) {
             $args[] = '--prompt';
             $args[] = escapeshellarg($session->prompt);
@@ -122,9 +129,14 @@ class PopOutTerminalService
 
         $argsStr = implode(' ', $args);
 
+        $escapedSessionId = $this->escapeForBash($sessionId);
+        $escapedBasePath = $this->escapeForBash(base_path());
+
         return <<<BASH
 #!/bin/bash
 clear
+export ORCA_SESSION_ID={$escapedSessionId}
+export ORCA_BASE_PATH={$escapedBasePath}
 exec {$argsStr}
 BASH;
     }
@@ -166,9 +178,14 @@ RUN;
 
         $screenshotBlock = $this->buildScreenshotCaptureBlock($sessionId, $screenshotPath);
 
+        $escapedSessionId = $this->escapeForBash($sessionId);
+        $escapedBasePath = $this->escapeForBash(base_path());
+
         return <<<BASH
 #!/bin/bash
 cd {$this->escapeForBash($workingDir)}
+export ORCA_SESSION_ID={$escapedSessionId}
+export ORCA_BASE_PATH={$escapedBasePath}
 
 TRANSCRIPT_PATH="{$transcriptPath}"
 LOG_PATH="{$logPath}"

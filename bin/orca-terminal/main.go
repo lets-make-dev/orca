@@ -20,17 +20,14 @@ func main() {
 	screenshotDelay := flag.Int("screenshot-delay", 4, "Initial delay before screenshots start")
 	workingDir := flag.String("working-dir", "", "Working directory (default: cwd)")
 	tempDir := flag.String("temp-dir", os.TempDir(), "Temp directory for screenshots, transcripts, socket")
-	sessionIDWebhook := flag.String("session-id-webhook", "", "POST webhook URL when Claude session ID is captured")
+	heartbeatURL := flag.String("heartbeat-url", "", "POST heartbeat URL (optional)")
+	heartbeatInterval := flag.Int("heartbeat-interval", 10, "Heartbeat interval in seconds")
 	modifiedFilesWebhook := flag.String("modified-files-webhook", "", "POST webhook URL for modified files list")
 	flag.Parse()
 
 	if *sessionID == "" || *claudeCmd == "" || *callbackURL == "" {
 		fmt.Fprintln(os.Stderr, "Usage: orca-terminal --session-id <id> --claude-cmd <cmd> --callback-url <url>")
 		os.Exit(1)
-	}
-
-	if *sessionIDWebhook != "" {
-		sessionIDWebhookURL = *sessionIDWebhook
 	}
 
 	if *modifiedFilesWebhook != "" {
@@ -67,6 +64,13 @@ func main() {
 	go screenshotLoop.run()
 	defer screenshotLoop.stop()
 
+	// Start heartbeat loop
+	if *heartbeatURL != "" {
+		hb := newHeartbeatLoop(*heartbeatURL, *sessionID, time.Duration(*heartbeatInterval)*time.Second)
+		go hb.run()
+		defer hb.stop()
+	}
+
 	// Wire up on-demand screenshot trigger from socket to screenshot loop
 	socketServer.onScreenshot = func() {
 		screenshotLoop.trigger()
@@ -75,7 +79,6 @@ func main() {
 	// Channels for injecting into the PTY from the socket
 	injectCh := make(chan string, 10)
 	rawKeyCh := make(chan byte, 10)
-	statusCh := make(chan struct{}, 10)
 
 	// Handle signals for clean shutdown
 	sigCh := make(chan os.Signal, 1)
@@ -96,15 +99,9 @@ func main() {
 		rawKeyCh <- key
 	}
 
-	// Wire up status trigger from socket to PTY (runs full /status hotkey flow)
-	socketServer.onStatus = func() {
-		statusCh <- struct{}{}
-	}
-
 	// Run Claude via PTY
 	transcriptPath := fmt.Sprintf("%s/orca_transcript_%s.txt", *tempDir, *sessionID)
-	debugLogPath := fmt.Sprintf("%s/orca_scanner_debug_%s.log", *tempDir, *sessionID)
-	exitCode := runPTY(*claudeCmd, *prompt, *promptDelay, transcriptPath, debugLogPath, injectCh, rawKeyCh, statusCh)
+	exitCode := runPTY(*claudeCmd, *prompt, *promptDelay, transcriptPath, injectCh, rawKeyCh)
 
 	// POST callback
 	postCallback(*callbackURL, *sessionID, exitCode, transcriptPath)

@@ -44,6 +44,7 @@ class OrcaSession extends Model
         'pid',
         'started_at',
         'completed_at',
+        'last_heartbeat_at',
         'popped_out_at',
         'popout_transcript',
         'popout_script_path',
@@ -62,6 +63,7 @@ class OrcaSession extends Model
             'max_turns' => 'integer',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
+            'last_heartbeat_at' => 'datetime',
             'popped_out_at' => 'datetime',
             'exit_code' => 'integer',
             'pid' => 'integer',
@@ -129,6 +131,17 @@ class OrcaSession extends Model
     public function isPoppedOut(): bool
     {
         return $this->status === OrcaSessionStatus::PoppedOut;
+    }
+
+    public function isHeartbeatStale(): bool
+    {
+        if (! $this->last_heartbeat_at) {
+            return false;
+        }
+
+        $threshold = (int) config('orca.popout.heartbeat_stale_seconds', 30);
+
+        return $this->last_heartbeat_at->diffInSeconds(now()) > $threshold;
     }
 
     public function isSkipPermissions(): bool

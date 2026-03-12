@@ -297,6 +297,53 @@ class Launcher extends Component
         $this->expandedSessionId = $session->id;
     }
 
+    public function resumeSessionInTerminal(string $id): void
+    {
+        $service = app(PopOutTerminalService::class);
+
+        if (! $service->isAvailable()) {
+            return;
+        }
+
+        $original = OrcaSession::find($id);
+
+        if (! $original || ! $original->isClaude()) {
+            return;
+        }
+
+        if ($original->status->isActive()) {
+            $original->update([
+                'status' => OrcaSessionStatus::Cancelled,
+                'completed_at' => now(),
+            ]);
+        }
+
+        $root = $original;
+        while ($root->parent_id) {
+            $root = OrcaSession::find($root->parent_id) ?? $root;
+            break;
+        }
+
+        $session = OrcaSession::create([
+            'session_type' => OrcaSessionType::Claude,
+            'prompt' => $original->claude_session_id
+                ? 'Continue with the previous task. Permissions have been granted.'
+                : $original->prompt,
+            'resume_session_id' => $original->claude_session_id,
+            'parent_id' => $root->id,
+            'skip_permissions' => true,
+            'max_turns' => $original->max_turns,
+            'allowed_tools' => $original->allowed_tools,
+            'working_directory' => $original->working_directory,
+            'status' => OrcaSessionStatus::PoppedOut,
+            'popped_out_at' => now(),
+        ]);
+
+        $service->popOut($session, request()->getSchemeAndHttpHost());
+
+        $this->expandedSessionId = $session->id;
+    }
+
     public function popOutSession(string $id): void
     {
         $service = app(PopOutTerminalService::class);
@@ -709,6 +756,12 @@ class Launcher extends Component
             'currentToolPhrase' => $currentToolPhrase,
             'canPopOut' => app(PopOutTerminalService::class)->isAvailable(),
             'launcherDebugContext' => $this->launcherOpen && $this->sourceUrl ? $this->resolveCurrentPageDebugContext() : null,
+            'heartbeatData' => $sessions->mapWithKeys(fn ($s) => [
+                $s->id => $s->last_heartbeat_at?->toIso8601String(),
+            ])->filter()->all(),
+            'heartbeatStale' => $sessions->mapWithKeys(fn ($s) => [
+                $s->id => $s->isHeartbeatStale(),
+            ])->filter()->all(),
         ]);
     }
 }

@@ -28,8 +28,23 @@
                             @if ($expandedSession->isClaude())
                                 @include('orca::livewire.partials.permission-badge', ['session' => $expandedSession])
                             @endif
+                            @if ($expandedSession->isPoppedOut() && isset($heartbeatData[$expandedSession->id]))
+                                @if (isset($heartbeatStale[$expandedSession->id]))
+                                    <button
+                                        wire:click="resumeSessionInTerminal('{{ $expandedSession->id }}')"
+                                        class="flex items-center text-red-400 transition hover:text-red-300"
+                                        title="Connection lost — click to resume in Terminal"
+                                    >
+                                        <flux:icon name="signal-slash" variant="micro" class="size-3.5" />
+                                    </button>
+                                @else
+                                    <span class="flex items-center" title="Heartbeat active">
+                                        <flux:icon name="signal" variant="micro" class="size-3.5 animate-pulse text-cyan-400" />
+                                    </span>
+                                @endif
+                            @endif
                             <span class="truncate text-sm font-medium text-white">
-                                {{ $expandedSession->isClaude() ? Str::limit($rootPrompt, 60) : Str::limit($expandedSession->command, 60) }}
+                                {{ $expandedSession->isClaude() ? Str::limit(rtrim(Str::before($rootPrompt, '# Debug'), " \t\n\r\0\x0B-"), 60) : Str::limit($expandedSession->command, 60) }}
                             </span>
                         </div>
                         <div class="ml-2 flex flex-shrink-0 items-center gap-1">
@@ -104,22 +119,42 @@
                             {{-- Fallback: pulsing dot + text (shown until screenshot loads) --}}
                             <template x-if="!loaded">
                                 <div class="flex flex-col items-center gap-3 py-4">
-                                    <span class="relative flex h-3 w-3">
-                                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
-                                        <span class="relative inline-flex h-3 w-3 rounded-full bg-cyan-500"></span>
-                                    </span>
-                                    <span class="text-sm font-medium text-cyan-400">Running in Terminal</span>
-                                    <span class="text-xs text-zinc-500">Screenshot will appear shortly...</span>
+                                    @if (isset($heartbeatStale[$expandedSession->id]))
+                                        <flux:icon name="signal-slash" variant="mini" class="size-5 text-red-400" />
+                                        <span class="text-sm font-medium text-red-400">Connection Lost</span>
+                                        <button
+                                            wire:click="resumeSessionInTerminal('{{ $expandedSession->id }}')"
+                                            class="rounded bg-red-500/20 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/30"
+                                        >
+                                            Resume in Terminal
+                                        </button>
+                                    @else
+                                        <span class="relative flex h-3 w-3">
+                                            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
+                                            <span class="relative inline-flex h-3 w-3 rounded-full bg-cyan-500"></span>
+                                        </span>
+                                        <span class="text-sm font-medium text-cyan-400">Running in Terminal</span>
+                                        <span class="text-xs text-zinc-500">Screenshot will appear shortly...</span>
+                                    @endif
                                 </div>
                             </template>
 
                             {{-- Focus terminal link --}}
-                            <button
-                                wire:click="focusTerminal('{{ $expandedSession->id }}')"
-                                class="mt-1 text-xs text-zinc-500 transition hover:text-cyan-400"
-                            >
-                                Focus Terminal
-                            </button>
+                            @if (isset($heartbeatStale[$expandedSession->id]))
+                                <button
+                                    wire:click="resumeSessionInTerminal('{{ $expandedSession->id }}')"
+                                    class="mt-1 text-xs text-red-400 transition hover:text-red-300"
+                                >
+                                    Resume in Terminal
+                                </button>
+                            @else
+                                <button
+                                    wire:click="focusTerminal('{{ $expandedSession->id }}')"
+                                    class="mt-1 text-xs text-zinc-500 transition hover:text-cyan-400"
+                                >
+                                    Focus Terminal
+                                </button>
+                            @endif
                         </div>
                     @elseif ($expandedSession->isClaude())
                         <div
@@ -484,14 +519,14 @@
                         <div
                             wire:key="pill-{{ $session->id }}"
                             @if ($session->isPoppedOut() && $expandedSessionId !== $session->id)
-                                x-data="{ hovering: false, ts: Date.now(), pos: { left: 0, top: 0 } }"
+                                x-data="{ hoverPill: false, hoverThumb: false, ts: Date.now(), pos: { left: 0, top: 0 }, get hovering() { return this.hoverPill || this.hoverThumb } }"
                                 x-on:mouseenter="
-                                    hovering = true;
+                                    hoverPill = true;
                                     ts = Date.now();
                                     let rect = $el.getBoundingClientRect();
                                     pos = { left: rect.left + rect.width / 2, top: rect.top };
                                 "
-                                x-on:mouseleave="hovering = false"
+                                x-on:mouseleave="hoverPill = false"
                             @endif
                         >
                             <button
@@ -504,11 +539,24 @@
                                 ])
                             >
                                 @include('orca::livewire.partials.status-dot', ['status' => $session->status])
+                                @if ($session->isPoppedOut() && isset($heartbeatData[$session->id]))
+                                    @if (isset($heartbeatStale[$session->id]))
+                                        <span
+                                            wire:click.stop="resumeSessionInTerminal('{{ $session->id }}')"
+                                            class="text-red-400 transition hover:text-red-300"
+                                            title="Connection lost — click to resume in Terminal"
+                                        >
+                                            <flux:icon name="signal-slash" variant="micro" class="size-3" />
+                                        </span>
+                                    @else
+                                        <flux:icon name="signal" variant="micro" class="size-3 animate-pulse text-cyan-400" />
+                                    @endif
+                                @endif
                                 @if ($session->isClaude())
                                     @include('orca::livewire.partials.permission-badge', ['session' => $session])
                                 @endif
                                 <span class="max-w-[120px] truncate">
-                                    {{ $session->isClaude() ? Str::limit($session->parent?->prompt ?? $session->prompt, 20) : Str::limit($session->command, 20) }}
+                                    {{ $session->isClaude() ? Str::limit(rtrim(Str::before($session->parent?->prompt ?? $session->prompt, '# Debug'), " \t\n\r\0\x0B-"), 20) : Str::limit($session->command, 20) }}
                                 </span>
 
                                 @if ($session->status->isTerminal())
@@ -534,16 +582,29 @@
                                         x-transition:leave="transition ease-in duration-100"
                                         x-transition:leave-start="opacity-100 translate-y-0"
                                         x-transition:leave-end="opacity-0 translate-y-1"
-                                        class="pointer-events-none fixed z-[9999]"
+                                        class="fixed z-[9999]"
                                         :style="`left: ${pos.left}px; top: ${pos.top}px; transform: translate(-50%, -100%); margin-top: -8px;`"
+                                        x-on:mouseenter="hoverThumb = true"
+                                        x-on:mouseleave="hoverThumb = false"
                                     >
-                                        <div class="w-52 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl">
+                                        <div
+                                            class="group/thumb w-52 cursor-pointer overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl transition hover:border-cyan-500"
+                                            wire:click="focusTerminal('{{ $session->id }}')"
+                                            title="Open in Terminal"
+                                        >
                                             <div class="relative overflow-hidden" style="max-height: 120px;">
                                                 <img
                                                     :src="'{{ route('orca.terminal-screenshot', $session->id) }}?t=' + ts"
                                                     alt="Terminal preview"
                                                     class="w-full"
                                                 />
+                                                {{-- Terminal icon overlay --}}
+                                                <div class="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover/thumb:bg-black/40">
+                                                    <div class="flex items-center gap-1.5 rounded-lg bg-zinc-900/80 px-2.5 py-1.5 text-xs font-medium text-cyan-400 opacity-0 shadow-lg transition group-hover/thumb:opacity-100">
+                                                        <flux:icon name="command-line" variant="micro" class="size-3.5" />
+                                                        <span>Terminal</span>
+                                                    </div>
+                                                </div>
                                                 <div class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-zinc-900 to-transparent"></div>
                                             </div>
                                         </div>

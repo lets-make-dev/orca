@@ -13,7 +13,7 @@ import (
 	"golang.org/x/term"
 )
 
-func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath string, debugLogPath string, injectCh <-chan string, rawKeyCh <-chan byte, statusCh <-chan struct{}) int {
+func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath string, injectCh <-chan string, rawKeyCh <-chan byte) int {
 	// Open transcript file for tee-ing output
 	transcriptFile, err := os.Create(transcriptPath)
 	if err != nil {
@@ -70,18 +70,15 @@ func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath str
 		stdinInterceptor(ptmx)
 	}()
 
-	// Copy PTY -> stdout + transcript, with output scanning for session ID
-	var baseWriter io.Writer
+	// Copy PTY -> stdout + transcript
+	var writer io.Writer
 	if transcriptFile != nil {
-		baseWriter = io.MultiWriter(os.Stdout, transcriptFile)
+		writer = io.MultiWriter(os.Stdout, transcriptFile)
 	} else {
-		baseWriter = os.Stdout
+		writer = os.Stdout
 	}
-	scanner := newOutputScanner(baseWriter, debugLogPath)
-	globalScanner = scanner
-	defer scanner.closeDebug()
 	go func() {
-		io.Copy(scanner, ptmx)
+		io.Copy(writer, ptmx)
 	}()
 
 	// Listen for injected text from socket
@@ -98,28 +95,14 @@ func runPTY(cmdStr string, prompt string, promptDelaySec int, transcriptPath str
 		}
 	}()
 
-	// Listen for status trigger from socket — runs the full /status hotkey flow
-	go func() {
-		for range statusCh {
-			runHotkey(ptmx, 0)
-		}
-	}()
-
-	// Auto-run /status first to capture session ID, then inject prompt
-	go func() {
-		time.Sleep(time.Duration(promptDelaySec) * time.Second)
-
-		// Always run /status to capture session ID
-		log.Printf("[orca] auto-triggering /status to capture session ID")
-		runHotkey(ptmx, 0) // blocks until session ID captured or timeout
-
-		// Then inject the user's prompt if provided
-		if prompt != "" {
-			time.Sleep(1 * time.Second) // let /status dismiss settle
+	// Auto-inject prompt after delay
+	if prompt != "" {
+		go func() {
+			time.Sleep(time.Duration(promptDelaySec) * time.Second)
 			log.Printf("[orca] injecting prompt")
 			injectCommand(ptmx, prompt)
-		}
-	}()
+		}()
+	}
 
 	// Wait for command to exit
 	exitCode := 0
