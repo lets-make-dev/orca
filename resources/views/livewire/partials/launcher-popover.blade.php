@@ -109,19 +109,11 @@
         },
 
         submitPlan() {
-            if ($wire.terminalMode) {
-                $wire.launchClaudeTerminal();
-            } else {
-                $wire.launchClaude();
-            }
+            $wire.launchClaudeTerminal();
         },
 
         submitExecute() {
-            if ($wire.terminalMode) {
-                $wire.launchClaudeTerminalExecute();
-            } else {
-                $wire.launchClaudeExecute();
-            }
+            $wire.launchClaudeTerminalExecute();
         },
 
         destroy() {
@@ -136,10 +128,30 @@
     x-on:orca-annotator-cancelled.window="annotating = false"
 >
     <form x-on:submit.prevent="submitPlan()" class="space-y-2">
+        {{-- Module context indicator --}}
+        @if (! empty($this->moduleContext))
+            <div class="flex items-center gap-1.5 rounded-lg bg-blue-500/10 px-2.5 py-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="size-3.5 shrink-0 text-blue-400">
+                    <path fill-rule="evenodd" d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0m-5-2a2 2 0 1 1-4 0 2 2 0 0 1 4 0m-2 8c1.653 0 3.156-.627 4.243-1.596A5 5 0 0 0 8 10a5 5 0 0 0-4.243 2.404A6.97 6.97 0 0 0 8 14" clip-rule="evenodd" />
+                </svg>
+                <span class="flex-1 text-xs font-medium text-blue-400">{{ $this->moduleContext['name'] ?? 'Module' }}</span>
+                <button
+                    type="button"
+                    wire:click="$set('moduleContext', [])"
+                    class="rounded p-0.5 text-blue-400/60 transition hover:text-blue-300"
+                    title="Remove module context"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="size-3">
+                        <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94z" />
+                    </svg>
+                </button>
+            </div>
+        @endif
+
         <template x-if="!annotating">
             <flux:textarea
                 wire:model="prompt"
-                placeholder="Describe what you want Claude to do..."
+                placeholder="{{ ! empty($this->moduleContext) ? 'Ask about ' . ($this->moduleContext['name'] ?? 'this module') . '...' : 'Describe what you want Claude to do...' }}"
                 rows="3"
                 class="text-xs"
                 x-on:keydown.cmd.enter="submitPlan()"
@@ -188,19 +200,6 @@
                             <span x-show="!debugCopied"><flux:icon name="clipboard-document" variant="micro" class="size-3" /></span>
                             <span x-show="debugCopied" x-cloak><flux:icon name="check" variant="micro" class="size-3 text-green-400" /></span>
                         </button>
-                        @if ($canPopOut)
-                            <button
-                                type="button"
-                                wire:click="$toggle('terminalMode')"
-                                class="rounded p-0.5 transition"
-                                x-bind:class="$wire.terminalMode
-                                    ? 'text-blue-500 dark:text-blue-400'
-                                    : 'text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300'"
-                                title="Send to Terminal"
-                            >
-                                <flux:icon name="command-line" variant="micro" class="size-3" />
-                            </button>
-                        @endif
                     </div>
                 </div>
 

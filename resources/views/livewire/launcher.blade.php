@@ -1,7 +1,11 @@
 <div data-orca-launcher x-data="{ orcaSurfaced: false, confirmExecute: false, scrollToBottom(el) { $nextTick(() => el.scrollTop = el.scrollHeight) } }">
     @if ($sessions->isEmpty() && ! $launcherOpen)
         {{-- Empty state: floating "+" button --}}
-        <div class="fixed right-4 bottom-4 z-50">
+        <div class="fixed right-4 bottom-4 z-50 flex items-center gap-1.5">
+            @if ($this->isModuleInfoEnabled())
+                @include('moduleloader::partials.module-info-cog', ['popoverPosition' => 'above'])
+            @endif
+
             <button
                 x-on:click="$wire.toggleLauncher(window.location.href)"
                 class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900 text-white shadow-lg transition hover:bg-zinc-700"
@@ -460,7 +464,7 @@
                             {{-- Terminal plan session: show Execute in footer --}}
                             <div class="border-t border-zinc-700 px-3 py-2">
                                 <button
-                                    wire:click="resumeSession('{{ $expandedSession->id }}')"
+                                    wire:click="resumeSessionInTerminal('{{ $expandedSession->id }}')"
                                     class="w-full rounded bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-black transition hover:bg-amber-400"
                                 >
                                     Execute
@@ -499,7 +503,7 @@
                                     [ Cancel ]
                                 </button>
                                 <button
-                                    x-on:click="confirmExecute = false; $wire.resumeSession('{{ $expandedSession?->id }}')"
+                                    x-on:click="confirmExecute = false; $wire.resumeSessionInTerminal('{{ $expandedSession?->id }}')"
                                     class="border border-amber-500 bg-amber-500 px-4 py-1 font-mono text-xs font-bold text-black hover:bg-amber-400"
                                 >
                                     [ OK ]
@@ -617,6 +621,10 @@
 
                 {{-- Fixed actions --}}
                 <div class="flex shrink-0 items-center gap-1">
+                    @if ($this->isModuleInfoEnabled())
+                        @include('moduleloader::partials.module-info-cog', ['popoverPosition' => 'above'])
+                    @endif
+
                     @if ($sessions->contains(fn ($s) => $s->status->isTerminal()))
                         <button
                             wire:click="clearAll"

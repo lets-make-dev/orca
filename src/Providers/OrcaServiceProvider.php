@@ -9,6 +9,7 @@ use MakeDev\Orca\Console\Commands\ClaudeHook;
 use MakeDev\Orca\Console\Commands\CleanupScreenshots;
 use MakeDev\Orca\Http\Middleware\InjectLauncher;
 use MakeDev\Orca\Livewire\Launcher;
+use Modules\ModuleLoader\Support\ModuleInfoRegistry;
 
 class OrcaServiceProvider extends ServiceProvider
 {
@@ -22,6 +23,7 @@ class OrcaServiceProvider extends ServiceProvider
         $this->registerViews();
         $this->registerLivewireComponents();
         $this->registerMiddleware();
+        $this->registerModuleInfo();
         $this->loadMigrationsFrom($this->basePath('database/migrations'));
     }
 
@@ -92,6 +94,35 @@ class OrcaServiceProvider extends ServiceProvider
     public function provides(): array
     {
         return [];
+    }
+
+    protected function registerModuleInfo(): void
+    {
+        if (! class_exists(ModuleInfoRegistry::class)) {
+            return;
+        }
+
+        ModuleInfoRegistry::register([
+            'name' => 'Orca',
+            'description' => 'AI-powered development assistant with Claude integration, terminal sessions, and browser-based code interaction.',
+            'version' => '1.0.0',
+            'keyFiles' => [
+                'packages/MakeDev/Orca/src/Livewire/Launcher.php',
+                'packages/MakeDev/Orca/src/Jobs/RunClaudeSession.php',
+                'packages/MakeDev/Orca/src/Models/OrcaSession.php',
+                'packages/MakeDev/Orca/config/orca.php',
+            ],
+            'capabilities' => [
+                'Claude Sessions',
+                'Terminal Pop-Out',
+                'Screenshot Capture',
+                'Session Management',
+            ],
+            'dependencies' => [
+                'livewire/livewire',
+                'laravel/framework',
+            ],
+        ]);
     }
 
     private function basePath(string $path = ''): string

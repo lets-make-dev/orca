@@ -6,6 +6,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Session;
 use Livewire\Component;
 use MakeDev\Orca\Enums\OrcaSessionStatus;
@@ -17,9 +18,13 @@ use MakeDev\Orca\Services\ClaudeEventParser;
 use MakeDev\Orca\Services\PopOutTerminalService;
 use MakeDev\Orca\Services\RouteResolver;
 use MakeDev\Orca\Services\SessionChannel;
+use Modules\ModuleLoader\Concerns\HasModuleInfo;
+use Modules\ModuleLoader\Contracts\MakeDevModule;
 
-class Launcher extends Component
+class Launcher extends Component implements MakeDevModule
 {
+    use HasModuleInfo;
+
     public string $command = '';
 
     public string $prompt = '';
@@ -49,8 +54,16 @@ class Launcher extends Component
 
     public string $debugContext = '';
 
-    #[Session]
-    public bool $terminalMode = false;
+    /** @var array{name?: string, version?: string, description?: string, keyFiles?: string[], capabilities?: string[], dependencies?: string[]} */
+    public array $moduleContext = [];
+
+    #[On('orca:chat-module')]
+    public function chatModule(array $moduleInfo): void
+    {
+        $this->moduleContext = $moduleInfo;
+        $this->launcherOpen = true;
+        $this->expandedSessionId = '';
+    }
 
     public function toggleSession(string $id): void
     {
@@ -93,6 +106,7 @@ class Launcher extends Component
             'prompt' => 'required|string|max:10000',
         ]);
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
+        $prompt = $this->appendModuleContext($prompt);
         $prompt = $this->appendDebugContext($prompt);
 
         $session = OrcaSession::create([
@@ -114,6 +128,7 @@ class Launcher extends Component
         $this->screenshotPath = '';
         $this->sourceUrl = '';
         $this->debugContext = '';
+        $this->moduleContext = [];
         $this->expandedSessionId = $session->id;
         $this->launcherOpen = false;
     }
@@ -124,6 +139,7 @@ class Launcher extends Component
             'prompt' => 'required|string|max:10000',
         ]);
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
+        $prompt = $this->appendModuleContext($prompt);
         $prompt = $this->appendDebugContext($prompt);
 
         $session = OrcaSession::create([
@@ -145,6 +161,7 @@ class Launcher extends Component
         $this->screenshotPath = '';
         $this->sourceUrl = '';
         $this->debugContext = '';
+        $this->moduleContext = [];
         $this->expandedSessionId = $session->id;
         $this->launcherOpen = false;
     }
@@ -381,6 +398,7 @@ class Launcher extends Component
             'prompt' => 'required|string|max:10000',
         ]);
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
+        $prompt = $this->appendModuleContext($prompt);
         $prompt = $this->appendDebugContext($prompt);
 
         $session = OrcaSession::create([
@@ -403,6 +421,7 @@ class Launcher extends Component
         $this->screenshotPath = '';
         $this->sourceUrl = '';
         $this->debugContext = '';
+        $this->moduleContext = [];
         $this->expandedSessionId = $session->id;
         $this->launcherOpen = false;
     }
@@ -419,6 +438,7 @@ class Launcher extends Component
             'prompt' => 'required|string|max:10000',
         ]);
         $prompt = $this->buildPromptWithScreenshot($this->prompt);
+        $prompt = $this->appendModuleContext($prompt);
         $prompt = $this->appendDebugContext($prompt);
 
         $session = OrcaSession::create([
@@ -441,6 +461,7 @@ class Launcher extends Component
         $this->screenshotPath = '';
         $this->sourceUrl = '';
         $this->debugContext = '';
+        $this->moduleContext = [];
         $this->expandedSessionId = $session->id;
         $this->launcherOpen = false;
     }
@@ -617,6 +638,38 @@ class Launcher extends Component
         return $context;
     }
 
+    private function appendModuleContext(string $prompt): string
+    {
+        if (empty($this->moduleContext)) {
+            return $prompt;
+        }
+
+        $parts = ['# Module Context'];
+        $parts[] = '## Module: '.($this->moduleContext['name'] ?? 'Unknown');
+
+        if (! empty($this->moduleContext['version'])) {
+            $parts[] = '## Version: '.$this->moduleContext['version'];
+        }
+
+        if (! empty($this->moduleContext['description'])) {
+            $parts[] = '## Description'."\n".$this->moduleContext['description'];
+        }
+
+        if (! empty($this->moduleContext['keyFiles'])) {
+            $parts[] = '## Key Files'."\n".implode("\n", $this->moduleContext['keyFiles']);
+        }
+
+        if (! empty($this->moduleContext['capabilities'])) {
+            $parts[] = '## Capabilities'."\n".implode(', ', $this->moduleContext['capabilities']);
+        }
+
+        if (! empty($this->moduleContext['dependencies'])) {
+            $parts[] = '## Dependencies'."\n".implode(', ', $this->moduleContext['dependencies']);
+        }
+
+        return $prompt."\n\n---\n\n".implode("\n\n", $parts);
+    }
+
     private function appendDebugContext(string $prompt): string
     {
         if (! $this->sourceUrl) {
@@ -713,6 +766,32 @@ class Launcher extends Component
         }
 
         return $this->toolPhraseText;
+    }
+
+    public function moduleInfo(): array
+    {
+        return [
+            'name' => 'Orca',
+            'description' => 'AI-powered development assistant with Claude integration, terminal sessions, and browser-based code interaction.',
+            'version' => '1.0.0',
+            'keyFiles' => [
+                'packages/MakeDev/Orca/src/Livewire/Launcher.php',
+                'packages/MakeDev/Orca/src/Jobs/RunClaudeSession.php',
+                'packages/MakeDev/Orca/src/Models/OrcaSession.php',
+                'packages/MakeDev/Orca/config/orca.php',
+            ],
+            'capabilities' => [
+                'Claude Sessions',
+                'Terminal Pop-Out',
+                'Screenshot Capture',
+                'Session Management',
+            ],
+            'dependencies' => [
+                'livewire/livewire',
+                'laravel/framework',
+            ],
+            'agentReadme' => $this->loadAgentReadme(),
+        ];
     }
 
     public function render(): View
