@@ -326,6 +326,15 @@ BASH;
         return $transcript;
     }
 
+    public function terminateTerminal(OrcaSession $session): void
+    {
+        $pid = trim(shell_exec('pgrep -f '.escapeshellarg('orca-terminal.*--session-id '.$session->id)) ?? '');
+
+        if ($pid && is_numeric($pid)) {
+            posix_kill((int) $pid, 15); // SIGTERM
+        }
+    }
+
     public function cleanup(OrcaSession $session): void
     {
         if ($session->popout_script_path && file_exists($session->popout_script_path)) {

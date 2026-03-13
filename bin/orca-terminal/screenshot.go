@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
 	"sync"
 	"time"
@@ -31,7 +30,7 @@ func newScreenshotLoop(windowID int, path string, interval, delay time.Duration)
 
 func (s *screenshotLoop) run() {
 	if s.windowID <= 0 {
-		log.Printf("No valid window ID, screenshot loop disabled")
+		fmt.Println("No valid window ID, screenshot loop disabled")
 		return
 	}
 
@@ -72,6 +71,6 @@ func (s *screenshotLoop) capture() {
 	windowArg := fmt.Sprintf("-l%d", s.windowID)
 	err := exec.Command("screencapture", windowArg, "-x", "-o", s.path).Run()
 	if err != nil {
-		log.Printf("Screenshot capture error: %v", err)
+		fmt.Print(".")
 	}
 }

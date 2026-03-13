@@ -291,6 +291,18 @@ class Launcher extends MakeDevModuleComponent
             return;
         }
 
+        // Terminate the terminal window for popped-out sessions
+        if ($session->status === OrcaSessionStatus::PoppedOut) {
+            app(PopOutTerminalService::class)->terminateTerminal($session);
+
+            $session->update([
+                'status' => OrcaSessionStatus::Cancelled,
+                'completed_at' => now(),
+            ]);
+
+            return;
+        }
+
         if ($session->isClaude()) {
             // For Claude sessions, set cancelled — the job loop checks this
             $session->update([
