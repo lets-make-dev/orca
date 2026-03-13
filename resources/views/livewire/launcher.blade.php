@@ -3,7 +3,6 @@
         {{-- Empty state: floating "+" button --}}
         <div class="fixed right-4 bottom-4 z-50 flex items-center gap-1.5">
             <x-moduleloader::skills-container popover-position="above">
-                @include('moduleloader::partials.power-off')
             </x-moduleloader::skills-container>
 
             <button
@@ -622,7 +621,6 @@
                 {{-- Fixed actions --}}
                 <div class="flex shrink-0 items-center gap-1">
                     <x-moduleloader::skills-container popover-position="above">
-                        @include('moduleloader::partials.power-off')
                     </x-moduleloader::skills-container>
 
                     @if ($sessions->contains(fn ($s) => $s->status->isTerminal()))
