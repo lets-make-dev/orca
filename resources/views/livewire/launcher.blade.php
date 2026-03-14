@@ -1,7 +1,7 @@
 <div data-orca-launcher x-data="{ orcaSurfaced: false, confirmExecute: false, scrollToBottom(el) { $nextTick(() => el.scrollTop = el.scrollHeight) } }">
     @if ($sessions->isEmpty() && ! $launcherOpen)
         {{-- Empty state: floating "+" button --}}
-        <div class="fixed right-4 bottom-4 z-50 flex items-center gap-1.5">
+        <div class="pointer-events-auto fixed right-4 bottom-4 z-50 flex items-center gap-1.5">
             <x-makedev::skills-container popover-position="above">
             </x-makedev::skills-container>
 
@@ -17,7 +17,7 @@
             @endif
         </div>
     @else
-        <div class="fixed inset-x-0 bottom-0 z-50">
+        <div class="pointer-events-auto fixed inset-x-0 bottom-0 z-50">
             {{-- Thread Panel --}}
             @if ($expandedSession)
                 <div class="relative ml-auto mb-1 mr-3 flex max-h-[60vh] w-full max-w-lg flex-col rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
