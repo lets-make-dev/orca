@@ -225,6 +225,11 @@ class RunClaudeSession implements ShouldQueue
             $parts[] = escapeshellarg($session->claude_session_id);
         }
 
+        if ($session->model) {
+            $parts[] = '--model';
+            $parts[] = escapeshellarg($session->model);
+        }
+
         if ($session->max_turns) {
             $parts[] = '--max-turns';
             $parts[] = (string) $session->max_turns;

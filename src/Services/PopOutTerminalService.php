@@ -242,6 +242,11 @@ BASH;
             $parts[] = escapeshellarg($session->prompt);
         }
 
+        if ($session->model) {
+            $parts[] = '--model';
+            $parts[] = escapeshellarg($session->model);
+        }
+
         if ($session->skip_permissions) {
             $parts[] = '--dangerously-skip-permissions';
         } elseif ($session->permission_mode) {

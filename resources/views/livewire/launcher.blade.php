@@ -2,8 +2,8 @@
     @if ($sessions->isEmpty() && ! $launcherOpen)
         {{-- Empty state: floating "+" button --}}
         <div class="fixed right-4 bottom-4 z-50 flex items-center gap-1.5">
-            <x-moduleloader::skills-container popover-position="above">
-            </x-moduleloader::skills-container>
+            <x-makedev::skills-container popover-position="above">
+            </x-makedev::skills-container>
 
             <button
                 x-on:click="$wire.toggleLauncher(window.location.href)"
@@ -620,8 +620,8 @@
 
                 {{-- Fixed actions --}}
                 <div class="flex shrink-0 items-center gap-1">
-                    <x-moduleloader::skills-container popover-position="above">
-                    </x-moduleloader::skills-container>
+                    <x-makedev::skills-container popover-position="above">
+                    </x-makedev::skills-container>
 
                     @if ($sessions->contains(fn ($s) => $s->status->isTerminal()))
                         <button

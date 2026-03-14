@@ -35,6 +35,7 @@ class OrcaSession extends Model
         'parent_id',
         'skip_permissions',
         'permission_mode',
+        'model',
         'allowed_tools',
         'working_directory',
         'max_turns',

@@ -7,6 +7,18 @@
         thumbnailUrl: null,
         annotator: null,
 
+        selectedModel: $wire.entangle('model'),
+        modelOpen: false,
+
+        get modelLabel() {
+            const labels = {
+                'claude-haiku-4-5': 'Haiku',
+                'claude-sonnet-4-6': 'Sonnet',
+                'claude-opus-4-6': 'Opus',
+            };
+            return labels[this.selectedModel] || 'Model';
+        },
+
         debugOpen: false,
         debugCopied: false,
         debugChecked: {
@@ -147,6 +159,57 @@
                 </button>
             </div>
         @endif
+
+        {{-- Model picker dropdown --}}
+        <div class="flex justify-end">
+            <div class="relative">
+                <button
+                    type="button"
+                    x-on:click="modelOpen = !modelOpen"
+                    class="flex items-center gap-1 rounded-md px-1.5 py-1 text-zinc-400 transition hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+                    title="Model"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+                    <span x-text="modelLabel" class="text-[10px] font-medium"></span>
+                </button>
+
+                <div
+                    x-show="modelOpen"
+                    x-on:click.away="modelOpen = false"
+                    x-transition:enter="transition ease-out duration-100"
+                    x-transition:enter-start="opacity-0 scale-95"
+                    x-transition:enter-end="opacity-100 scale-100"
+                    x-transition:leave="transition ease-in duration-75"
+                    x-transition:leave-start="opacity-100 scale-100"
+                    x-transition:leave-end="opacity-0 scale-95"
+                    class="absolute right-0 top-full mt-1 w-36 rounded-lg border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-800"
+                    style="z-index: 10;"
+                    x-cloak
+                >
+                    <template x-for="option in [
+                        { id: 'claude-haiku-4-5', label: 'Haiku' },
+                        { id: 'claude-sonnet-4-6', label: 'Sonnet' },
+                        { id: 'claude-opus-4-6', label: 'Opus' },
+                    ]" :key="option.id">
+                        <button
+                            type="button"
+                            x-on:click="selectedModel = option.id; modelOpen = false"
+                            class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor"
+                                class="size-3.5 text-blue-500"
+                                x-show="selectedModel === option.id"
+                            >
+                                <path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.739a.75.75 0 0 1 1.04-.208Z" clip-rule="evenodd" />
+                            </svg>
+                            <span class="size-3.5" x-show="selectedModel !== option.id"></span>
+                            <span x-text="option.label" class="text-zinc-700 dark:text-zinc-200"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+        </div>
 
         <template x-if="!annotating">
             <flux:textarea

@@ -8,6 +8,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Session;
+use MakeDev\MakeDev\Livewire\MakeDevModuleComponent;
 use MakeDev\Orca\Enums\OrcaSessionStatus;
 use MakeDev\Orca\Enums\OrcaSessionType;
 use MakeDev\Orca\Jobs\RunClaudeSession;
@@ -17,7 +18,6 @@ use MakeDev\Orca\Services\ClaudeEventParser;
 use MakeDev\Orca\Services\PopOutTerminalService;
 use MakeDev\Orca\Services\RouteResolver;
 use MakeDev\Orca\Services\SessionChannel;
-use Modules\ModuleLoader\Livewire\MakeDevModuleComponent;
 
 class Launcher extends MakeDevModuleComponent
 {
@@ -32,6 +32,9 @@ class Launcher extends MakeDevModuleComponent
     public array $sessionScreenshots = [];
 
     public bool $launcherOpen = false;
+
+    #[Session]
+    public string $model = '';
 
     #[Session]
     public string $expandedSessionId = '';
@@ -53,10 +56,35 @@ class Launcher extends MakeDevModuleComponent
     /** @var array{name?: string, version?: string, description?: string, keyFiles?: string[], capabilities?: string[], dependencies?: string[]} */
     public array $moduleContext = [];
 
+    public function mount(): void
+    {
+        if ($this->model === '') {
+            $this->model = config('orca.claude.default_model', 'claude-opus-4-6');
+        }
+
+        $pending = session()->pull('orca.pending_harpoon_refactor');
+
+        if ($pending) {
+            $this->prompt = $pending['prompt'] ?? '';
+            $this->moduleContext = $pending['moduleInfo'] ?? [];
+            $this->launcherOpen = true;
+            $this->expandedSessionId = '';
+        }
+    }
+
     #[On('orca:chat-module')]
     public function chatModule(array $moduleInfo): void
     {
         $this->moduleContext = $moduleInfo;
+        $this->launcherOpen = true;
+        $this->expandedSessionId = '';
+    }
+
+    #[On('orca:harpoon-refactor')]
+    public function harpoonRefactor(string $prompt, array $moduleInfo = []): void
+    {
+        $this->moduleContext = $moduleInfo;
+        $this->prompt = $prompt;
         $this->launcherOpen = true;
         $this->expandedSessionId = '';
     }
@@ -157,6 +185,7 @@ class Launcher extends MakeDevModuleComponent
             'screenshot_path' => $this->screenshotPath ?: null,
             'source_url' => $this->sourceUrl ?: null,
             ...$this->resolveSessionContext(),
+            'model' => $this->model,
             'permission_mode' => 'plan',
             'max_turns' => config('orca.claude.max_turns', 50),
             'allowed_tools' => config('orca.claude.default_allowed_tools', []) ?: null,
@@ -190,6 +219,7 @@ class Launcher extends MakeDevModuleComponent
             'screenshot_path' => $this->screenshotPath ?: null,
             'source_url' => $this->sourceUrl ?: null,
             ...$this->resolveSessionContext(),
+            'model' => $this->model,
             'skip_permissions' => true,
             'max_turns' => config('orca.claude.max_turns', 50),
             'allowed_tools' => config('orca.claude.default_allowed_tools', []) ?: null,
@@ -461,6 +491,7 @@ class Launcher extends MakeDevModuleComponent
             'screenshot_path' => $this->screenshotPath ?: null,
             'source_url' => $this->sourceUrl ?: null,
             ...$this->resolveSessionContext(),
+            'model' => $this->model,
             'permission_mode' => 'plan',
             'max_turns' => config('orca.claude.max_turns', 50),
             'allowed_tools' => config('orca.claude.default_allowed_tools', []) ?: null,
@@ -501,6 +532,7 @@ class Launcher extends MakeDevModuleComponent
             'screenshot_path' => $this->screenshotPath ?: null,
             'source_url' => $this->sourceUrl ?: null,
             ...$this->resolveSessionContext(),
+            'model' => $this->model,
             'skip_permissions' => true,
             'max_turns' => config('orca.claude.max_turns', 50),
             'allowed_tools' => config('orca.claude.default_allowed_tools', []) ?: null,

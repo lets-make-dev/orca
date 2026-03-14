@@ -13,6 +13,7 @@ return [
 
     'claude' => [
         'binary' => env('CLAUDE_BINARY', 'claude'),
+        'default_model' => env('CLAUDE_MODEL', 'claude-opus-4-6'),
         'default_permission_mode' => env('CLAUDE_PERMISSION_MODE', 'plan'),
         'max_turns' => env('CLAUDE_MAX_TURNS', 50),
         'timeout' => env('CLAUDE_TIMEOUT', 3600),
