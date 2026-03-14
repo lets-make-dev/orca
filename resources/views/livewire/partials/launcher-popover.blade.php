@@ -212,15 +212,15 @@
         </div>
 
         <template x-if="!annotating">
-            <flux:textarea
+            <textarea
                 wire:model="prompt"
                 placeholder="{{ ! empty($this->moduleContext) ? 'Ask about ' . ($this->moduleContext['name'] ?? 'this module') . '...' : 'Describe what you want Claude to do...' }}"
                 rows="3"
-                class="text-xs"
+                class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-900 placeholder-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500"
                 x-on:keydown.cmd.enter="submitPlan()"
                 x-on:keydown.ctrl.enter="submitPlan()"
                 x-init="$nextTick(() => $el.focus())"
-            />
+            ></textarea>
         </template>
 
         {{-- Screenshot thumbnail preview --}}
@@ -236,7 +236,7 @@
                     x-on:click="removeScreenshot()"
                     class="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-700 text-zinc-300 transition hover:bg-red-600 hover:text-white"
                 >
-                    <flux:icon name="x-mark" variant="micro" class="size-3" />
+                    @include('orca::partials.icon', ['name' => 'x-mark', 'class' => 'size-3'])
                 </button>
             </div>
         </template>
@@ -250,7 +250,7 @@
                         x-on:click="debugOpen = !debugOpen"
                         class="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-zinc-400 transition hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
                     >
-                        <flux:icon name="chevron-right" variant="micro" class="size-3 transition-transform" x-bind:class="debugOpen && 'rotate-90'" />
+                        @include('orca::partials.icon', ['name' => 'chevron-right', 'class' => 'size-3 transition-transform', 'extra' => 'x-bind:class="debugOpen && \'rotate-90\'"'])
                         Context
                     </button>
                     <div class="flex items-center gap-1">
@@ -260,8 +260,8 @@
                             class="rounded p-0.5 text-zinc-400 transition hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
                             title="Copy context"
                         >
-                            <span x-show="!debugCopied"><flux:icon name="clipboard-document" variant="micro" class="size-3" /></span>
-                            <span x-show="debugCopied" x-cloak><flux:icon name="check" variant="micro" class="size-3 text-green-400" /></span>
+                            <span x-show="!debugCopied">@include('orca::partials.icon', ['name' => 'clipboard-document', 'class' => 'size-3'])</span>
+                            <span x-show="debugCopied" x-cloak>@include('orca::partials.icon', ['name' => 'check', 'class' => 'size-3 text-green-400'])</span>
                         </button>
                     </div>
                 </div>
@@ -313,17 +313,19 @@
                 x-show="!thumbnailUrl"
                 class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
             >
-                <flux:icon name="camera" variant="micro" class="size-3.5" />
+                @include('orca::partials.icon', ['name' => 'camera', 'class' => 'size-3.5'])
                 Annotate
             </button>
 
             <div class="flex flex-1 items-center gap-2">
-                <flux:button type="submit" size="sm" variant="primary" icon="play" class="flex-1">
+                <button type="submit" class="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200">
+                    @include('orca::partials.icon', ['name' => 'play', 'variant' => 'mini', 'class' => 'size-3.5'])
                     Plan
-                </flux:button>
-                <flux:button type="button" size="sm" variant="ghost" icon="bolt" x-on:click="submitExecute()" class="flex-1">
+                </button>
+                <button type="button" x-on:click="submitExecute()" class="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800">
+                    @include('orca::partials.icon', ['name' => 'bolt', 'variant' => 'mini', 'class' => 'size-3.5'])
                     Execute
-                </flux:button>
+                </button>
             </div>
         </div>
 
@@ -340,7 +342,7 @@
                         : 'text-zinc-400 hover:text-zinc-200'"
                     title="Toggle crop mode"
                 >
-                    <flux:icon name="scissors" variant="micro" class="size-3" />
+                    @include('orca::partials.icon', ['name' => 'scissors', 'class' => 'size-3'])
                     <span>Crop</span>
                 </button>
                 <div class="flex-1"></div>
@@ -350,7 +352,7 @@
                     x-bind:disabled="capturing"
                     class="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
                 >
-                    <flux:icon name="camera" variant="micro" class="size-3.5" />
+                    @include('orca::partials.icon', ['name' => 'camera', 'class' => 'size-3.5'])
                     <span x-show="!capturing">Capture</span>
                     <span x-show="capturing">Saving...</span>
                 </button>

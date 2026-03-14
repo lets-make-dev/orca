@@ -61,7 +61,7 @@
         class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
         title="Debug Info"
     >
-        <flux:icon name="document-text" variant="micro" class="size-3.5" />
+        @include('orca::partials.icon', ['name' => 'document-text', 'class' => 'size-3.5'])
     </button>
 
     <div
@@ -84,8 +84,8 @@
                 class="rounded p-1 text-zinc-500 transition hover:bg-zinc-700 hover:text-zinc-300"
                 title="Copy checked fields"
             >
-                <span x-show="!copied"><flux:icon name="clipboard-document" variant="micro" class="size-3.5" /></span>
-                <span x-show="copied" x-cloak><flux:icon name="check" variant="micro" class="size-3.5 text-green-400" /></span>
+                <span x-show="!copied">@include('orca::partials.icon', ['name' => 'clipboard-document', 'class' => 'size-3.5'])</span>
+                <span x-show="copied" x-cloak>@include('orca::partials.icon', ['name' => 'check', 'class' => 'size-3.5 text-green-400'])</span>
             </button>
         </div>
 
@@ -181,7 +181,7 @@
                     <span class="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Preview</span>
                     <div class="mt-0.5">
                         <a href="{{ $debugPreviewUrl }}" target="_blank" class="inline-flex items-center gap-1 rounded bg-zinc-900 px-2 py-1.5 font-mono text-[11px] text-blue-400 hover:text-blue-300">
-                            <flux:icon name="arrow-top-right-on-square" variant="micro" class="size-3" />
+                            @include('orca::partials.icon', ['name' => 'arrow-top-right-on-square', 'class' => 'size-3'])
                             Open as user
                         </a>
                     </div>

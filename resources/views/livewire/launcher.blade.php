@@ -9,7 +9,7 @@
                 x-on:click="$wire.toggleLauncher(window.location.href)"
                 class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900 text-white shadow-lg transition hover:bg-zinc-700"
             >
-                <flux:icon name="plus" variant="mini" class="size-5" />
+                @include('orca::partials.icon', ['name' => 'plus', 'variant' => 'mini', 'class' => 'size-5'])
             </button>
 
             @if ($launcherOpen)
@@ -38,11 +38,11 @@
                                         class="flex items-center text-red-400 transition hover:text-red-300"
                                         title="Connection lost — click to resume in Terminal"
                                     >
-                                        <flux:icon name="signal-slash" variant="micro" class="size-3.5" />
+                                        @include('orca::partials.icon', ['name' => 'signal-slash', 'class' => 'size-3.5'])
                                     </button>
                                 @else
                                     <span class="flex items-center" title="Heartbeat active">
-                                        <flux:icon name="signal" variant="micro" class="size-3.5 animate-pulse text-cyan-400" />
+                                        @include('orca::partials.icon', ['name' => 'signal', 'class' => 'size-3.5 animate-pulse text-cyan-400'])
                                     </span>
                                 @endif
                             @endif
@@ -56,19 +56,19 @@
                             @endif
                             @if ($canPopOut && $expandedSession->isClaude() && $expandedSession->status->isActive() && $expandedSession->status !== \MakeDev\Orca\Enums\OrcaSessionStatus::PoppedOut)
                                 <button wire:click="popOutSession('{{ $expandedSession->id }}')" class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-cyan-400" title="Open in Terminal">
-                                    <flux:icon name="arrow-top-right-on-square" variant="micro" class="size-3.5" />
+                                    @include('orca::partials.icon', ['name' => 'arrow-top-right-on-square', 'class' => 'size-3.5'])
                                 </button>
                             @endif
                             @if ($expandedSession->status->isActive() && $expandedSession->status !== \MakeDev\Orca\Enums\OrcaSessionStatus::Pending && $expandedSession->status !== \MakeDev\Orca\Enums\OrcaSessionStatus::PoppedOut)
                                 <button wire:click="kill('{{ $expandedSession->id }}')" class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-red-400" title="Kill">
-                                    <flux:icon name="stop" variant="micro" class="size-3.5" />
+                                    @include('orca::partials.icon', ['name' => 'stop', 'class' => 'size-3.5'])
                                 </button>
                             @endif
                             <button wire:click="dismiss('{{ $expandedSession->id }}')" wire:confirm="Delete this session?" class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-red-400" title="Delete">
-                                <flux:icon name="trash" variant="micro" class="size-3.5" />
+                                @include('orca::partials.icon', ['name' => 'trash', 'class' => 'size-3.5'])
                             </button>
                             <button wire:click="toggleSession('{{ $expandedSession->id }}')" class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-white" title="Close">
-                                <flux:icon name="x-mark" variant="micro" class="size-3.5" />
+                                @include('orca::partials.icon', ['name' => 'x-mark', 'class' => 'size-3.5'])
                             </button>
                         </div>
                     </div>
@@ -123,7 +123,7 @@
                             <template x-if="!loaded">
                                 <div class="flex flex-col items-center gap-3 py-4">
                                     @if (isset($heartbeatStale[$expandedSession->id]))
-                                        <flux:icon name="signal-slash" variant="mini" class="size-5 text-red-400" />
+                                        @include('orca::partials.icon', ['name' => 'signal-slash', 'variant' => 'mini', 'class' => 'size-5 text-red-400'])
                                         <span class="text-sm font-medium text-red-400">Connection Lost</span>
                                         <button
                                             wire:click="resumeSessionInTerminal('{{ $expandedSession->id }}')"
@@ -238,7 +238,7 @@
                                     {{-- Active tool: spinning indicator at its chronological position --}}
                                     @if ($message->id === $lastToolUseId && $currentToolPhrase && $expandedSession->status->isActive())
                                         <div class="flex items-center gap-1.5 text-blue-400">
-                                            <flux:icon name="cog-6-tooth" variant="micro" class="size-3 animate-spin" />
+                                            @include('orca::partials.icon', ['name' => 'cog-6-tooth', 'class' => 'size-3 animate-spin'])
                                             <span class="font-medium italic">{{ $currentToolPhrase }}</span>
                                         </div>
                                     @endif
@@ -292,12 +292,12 @@
 
                                 @if ($expandedSession->isAwaitingInput() && $interactionType === 'permission')
                                     <div class="mb-2 flex items-center gap-2">
-                                        <flux:button size="sm" variant="primary" wire:click="approvePermission('{{ $expandedSession->id }}')">
+                                        <button wire:click="approvePermission('{{ $expandedSession->id }}')" class="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200">
                                             Approve
-                                        </flux:button>
-                                        <flux:button size="sm" variant="ghost" wire:click="denyPermission('{{ $expandedSession->id }}')">
+                                        </button>
+                                        <button wire:click="denyPermission('{{ $expandedSession->id }}')" class="rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800">
                                             Deny
-                                        </flux:button>
+                                        </button>
                                     </div>
                                 @endif
 
@@ -391,7 +391,7 @@
                                                     : 'text-zinc-400 hover:text-zinc-200'"
                                                 title="Toggle crop mode"
                                             >
-                                                <flux:icon name="scissors" variant="micro" class="size-3" />
+                                                @include('orca::partials.icon', ['name' => 'scissors', 'class' => 'size-3'])
                                                 <span>Crop</span>
                                             </button>
                                             <div class="flex-1"></div>
@@ -401,7 +401,7 @@
                                                 x-bind:disabled="capturing"
                                                 class="flex items-center gap-1 rounded bg-white px-2 py-1 text-xs font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:opacity-50"
                                             >
-                                                <flux:icon name="camera" variant="micro" class="size-3" />
+                                                @include('orca::partials.icon', ['name' => 'camera', 'class' => 'size-3'])
                                                 <span x-show="!capturing">Capture</span>
                                                 <span x-show="capturing">Saving...</span>
                                             </button>
@@ -428,26 +428,26 @@
                                                 x-on:click="removeScreenshot()"
                                                 class="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-700 text-zinc-300 transition hover:bg-red-600 hover:text-white"
                                             >
-                                                <flux:icon name="x-mark" variant="micro" class="size-3" />
+                                                @include('orca::partials.icon', ['name' => 'x-mark', 'class' => 'size-3'])
                                             </button>
                                         </div>
                                     </template>
 
                                     <form wire:submit="respond('{{ $expandedSession->id }}')" class="flex items-center gap-2">
-                                        <flux:input
-                                            wire:model="sessionInputs.{{ $expandedSession->id }}"
-                                            placeholder="Type a message..."
-                                            size="sm"
-                                            class="flex-1 text-xs"
-                                            autocomplete="off"
-                                        >
-                                            <x-slot name="iconTrailing">
-                                                <button type="button" x-on:click="startAnnotation('click')" x-show="!thumbnailUrl && !annotating" class="text-zinc-400 transition hover:text-cyan-400">
-                                                    <flux:icon name="camera" variant="micro" class="size-3.5" />
-                                                </button>
-                                            </x-slot>
-                                        </flux:input>
-                                        <flux:button type="submit" size="sm" variant="primary" icon="paper-airplane" />
+                                        <div class="relative flex-1">
+                                            <input
+                                                wire:model="sessionInputs.{{ $expandedSession->id }}"
+                                                placeholder="Type a message..."
+                                                autocomplete="off"
+                                                class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-900 placeholder-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500"
+                                            />
+                                            <button type="button" x-on:click="startAnnotation('click')" x-show="!thumbnailUrl && !annotating" class="absolute top-1/2 right-2 -translate-y-1/2 text-zinc-400 transition hover:text-cyan-400">
+                                                @include('orca::partials.icon', ['name' => 'camera', 'class' => 'size-3.5'])
+                                            </button>
+                                        </div>
+                                        <button type="submit" class="rounded-lg bg-zinc-900 p-1.5 text-white transition hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200">
+                                            @include('orca::partials.icon', ['name' => 'paper-airplane', 'variant' => 'mini', 'class' => 'size-4'])
+                                        </button>
                                         @if ($canExecute)
                                             <button
                                                 x-on:click="confirmExecute = true"
@@ -549,10 +549,10 @@
                                             class="text-red-400 transition hover:text-red-300"
                                             title="Connection lost — click to resume in Terminal"
                                         >
-                                            <flux:icon name="signal-slash" variant="micro" class="size-3" />
+                                            @include('orca::partials.icon', ['name' => 'signal-slash', 'class' => 'size-3'])
                                         </span>
                                     @else
-                                        <flux:icon name="signal" variant="micro" class="size-3 animate-pulse text-cyan-400" />
+                                        @include('orca::partials.icon', ['name' => 'signal', 'class' => 'size-3 animate-pulse text-cyan-400'])
                                     @endif
                                 @endif
                                 @if ($session->isClaude())
@@ -568,7 +568,7 @@
                                         class="ml-0.5 hidden rounded p-0.5 hover:bg-zinc-200 group-hover:inline-flex dark:hover:bg-zinc-700"
                                         title="Dismiss"
                                     >
-                                        <flux:icon name="x-mark" variant="micro" class="size-3" />
+                                        @include('orca::partials.icon', ['name' => 'x-mark', 'class' => 'size-3'])
                                     </span>
                                 @endif
                             </button>
@@ -604,7 +604,7 @@
                                                 {{-- Terminal icon overlay --}}
                                                 <div class="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover/thumb:bg-black/40">
                                                     <div class="flex items-center gap-1.5 rounded-lg bg-zinc-900/80 px-2.5 py-1.5 text-xs font-medium text-cyan-400 opacity-0 shadow-lg transition group-hover/thumb:opacity-100">
-                                                        <flux:icon name="command-line" variant="micro" class="size-3.5" />
+                                                        @include('orca::partials.icon', ['name' => 'command-line', 'class' => 'size-3.5'])
                                                         <span>Terminal</span>
                                                     </div>
                                                 </div>
@@ -629,7 +629,7 @@
                             class="flex h-8 items-center gap-1 rounded-lg px-2 text-xs text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-white"
                             title="Clear completed sessions"
                         >
-                            <flux:icon name="x-mark" variant="micro" class="size-3.5" />
+                            @include('orca::partials.icon', ['name' => 'x-mark', 'class' => 'size-3.5'])
                             <span class="hidden sm:inline">Clear</span>
                         </button>
                     @endif
@@ -643,7 +643,7 @@
                                 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800' => ! $launcherOpen,
                             ])
                         >
-                            <flux:icon name="plus" variant="mini" class="size-4" />
+                            @include('orca::partials.icon', ['name' => 'plus', 'variant' => 'mini', 'class' => 'size-4'])
                         </button>
 
                         @if ($launcherOpen)
