@@ -9,6 +9,7 @@
         // Multi-instance WebTerm state
         openWebtermPanels: @js($webtermSessionIds ?: []),
         webtermUrls: @js($webtermUrls ?? []),
+        webtermCommands: @js($webtermCommands ?? []),
         webtermStates: {},
         minimizedPanels: {},
         panelPositions: {},
@@ -120,7 +121,7 @@
             return `width: 520px; right: ${idx * 532 + 12}px; bottom: 48px;`;
         },
     }"
-    x-on:orca:webterm-connect.window="initWebTerm($event.detail.wsUrl, $event.detail.sessionId)"
+    x-on:orca:webterm-connect.window="if ($event.detail.command) webtermCommands[$event.detail.sessionId] = $event.detail.command; initWebTerm($event.detail.wsUrl, $event.detail.sessionId)"
     x-on:orca:webterm-disconnect.window="closeWebTerm($event.detail.sessionId)"
     x-on:orca:webterm-toggle.window="toggleMinimize($event.detail.sessionId)"
     x-on:wt-state="
@@ -724,6 +725,12 @@
                 >
                     <div class="flex min-w-0 items-center gap-2">
                         <span class="rounded bg-cyan-500/20 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-wider text-cyan-400">TERMINAL</span>
+                        <span
+                            class="text-zinc-500 transition hover:text-cyan-400"
+                            :title="webtermCommands[panelId] || 'claude'"
+                        >
+                            @include('orca::partials.icon', ['name' => 'command-line', 'class' => 'size-3.5'])
+                        </span>
                         <span class="truncate text-xs font-medium text-white" x-text="'Session ' + panelId.substring(0, 8)"></span>
                     </div>
                     <div class="ml-2 flex flex-shrink-0 items-center gap-1">

@@ -160,7 +160,7 @@ class Launcher extends MakeDevModuleComponent
             $wsUrl = "ws://{$host}:{$port}?token=".urlencode($token);
 
             $this->webtermSessionIds[] = $session->id;
-            $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
+            $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id, command: $this->buildDisplayCommand($session));
 
             return;
         }
@@ -654,7 +654,7 @@ class Launcher extends MakeDevModuleComponent
         $this->webtermSessionIds[] = $session->id;
         $this->launcherOpen = false;
 
-        $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
+        $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id, command: $this->buildDisplayCommand($session));
     }
 
     public function launchClaudeWebTermExecute(): void
@@ -698,7 +698,7 @@ class Launcher extends MakeDevModuleComponent
         $this->webtermSessionIds[] = $session->id;
         $this->launcherOpen = false;
 
-        $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
+        $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id, command: $this->buildDisplayCommand($session));
     }
 
     public function resumeSessionInWebTerm(string $id): void
@@ -748,7 +748,7 @@ class Launcher extends MakeDevModuleComponent
 
         $this->webtermSessionIds[] = $session->id;
 
-        $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
+        $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id, command: $this->buildDisplayCommand($session));
     }
 
     public function isWebTermAvailable(): bool
@@ -1063,6 +1063,29 @@ class Launcher extends MakeDevModuleComponent
         ];
     }
 
+    private function buildDisplayCommand(OrcaSession $session): string
+    {
+        $parts = ['claude'];
+
+        if ($session->model) {
+            $parts[] = '--model '.$session->model;
+        }
+
+        if ($session->skip_permissions) {
+            $parts[] = '--dangerously-skip-permissions';
+        } elseif ($session->permission_mode) {
+            $parts[] = '--permission-mode '.$session->permission_mode;
+        }
+
+        if ($session->resume_session_id) {
+            $parts[] = '--resume '.Str::limit($session->resume_session_id, 20);
+        } elseif ($session->prompt) {
+            $parts[] = '-p "'.Str::limit($session->prompt, 80).'"';
+        }
+
+        return implode(' ', $parts);
+    }
+
     private function buildPromptWithScreenshot(string $prompt): string
     {
         if ($this->screenshotPath && file_exists($this->screenshotPath)) {
@@ -1211,6 +1234,11 @@ class Launcher extends MakeDevModuleComponent
                 $s->id => $s->isHeartbeatStale(),
             ])->filter()->all(),
             'webtermSessionIds' => $this->webtermSessionIds,
+            'webtermCommands' => collect($this->webtermSessionIds)->mapWithKeys(function (string $id) use ($sessions) {
+                $session = $sessions->firstWhere('id', $id);
+
+                return [$id => $session ? $this->buildDisplayCommand($session) : 'claude'];
+            })->all(),
             'webtermUrls' => collect($this->webtermSessionIds)->mapWithKeys(function (string $id) {
                 $token = app(WebTermTokenService::class)->generate($id);
                 $host = config('orca.webterm.host', '127.0.0.1');
