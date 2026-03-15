@@ -26,6 +26,8 @@ class WebTermConnection
 
     private bool $processSpawned = false;
 
+    private ?string $childTtyPath = null;
+
     /** @var list<string> Output buffered while no client is connected */
     private array $replayBuffer = [];
 
@@ -113,6 +115,21 @@ class WebTermConnection
             'popped_out_at' => now(),
         ]);
 
+        // Force the PTY size after a short delay. macOS `script` ignores COLUMNS/LINES
+        // env vars when its stdin is a pipe, so the PTY starts at a wrong default size.
+        $this->loop->addTimer(0.3, function () use ($cols, $rows): void {
+            if (! is_resource($this->process)) {
+                return;
+            }
+
+            $status = proc_get_status($this->process);
+
+            if ($status['running'] && $status['pid']) {
+                $this->setTtySize($status['pid'], $cols, $rows);
+                @exec("kill -WINCH -{$status['pid']} 2>/dev/null");
+            }
+        });
+
         // Read timer: poll stdout/stderr every 10ms
         $this->readTimer = $this->loop->addPeriodicTimer(0.01, function (): void {
             $this->readOutput();
@@ -163,7 +180,7 @@ class WebTermConnection
     /**
      * Handle a resize event from the client.
      * On the first call, this spawns the process with the correct dimensions.
-     * On subsequent calls, it sends SIGWINCH to notify the process.
+     * On subsequent calls, it updates the PTY size via stty and sends SIGWINCH.
      */
     public function resize(int $cols, int $rows): void
     {
@@ -180,10 +197,64 @@ class WebTermConnection
         $status = proc_get_status($this->process);
 
         if ($status['running'] && $status['pid']) {
-            // Send SIGWINCH to the process group
             $pgid = $status['pid'];
+
+            // Update the PTY dimensions so ioctl(TIOCGWINSZ) returns the new size
+            $this->setTtySize($pgid, $cols, $rows);
+
+            // Send SIGWINCH to notify the process group of the size change
             @exec("kill -WINCH -{$pgid} 2>/dev/null");
         }
+    }
+
+    /**
+     * Set the PTY size via stty so the child process can read the correct dimensions.
+     */
+    private function setTtySize(int $parentPid, int $cols, int $rows): void
+    {
+        if ($this->childTtyPath === null) {
+            $this->childTtyPath = $this->resolveChildTty($parentPid);
+        }
+
+        if ($this->childTtyPath) {
+            @exec(sprintf(
+                'stty -f %s rows %d cols %d 2>/dev/null',
+                escapeshellarg($this->childTtyPath),
+                $rows,
+                $cols,
+            ));
+        }
+    }
+
+    /**
+     * Walk the process tree to find a child with a PTY device.
+     * Process tree: sh -> script -> claude
+     */
+    private function resolveChildTty(int $parentPid): ?string
+    {
+        $search = $parentPid;
+
+        for ($depth = 0; $depth < 4; $depth++) {
+            $childPid = (int) trim(@exec("pgrep -oP {$search} 2>/dev/null") ?? '');
+
+            if ($childPid <= 0) {
+                break;
+            }
+
+            $tty = trim(@exec("ps -o tty= -p {$childPid} 2>/dev/null") ?? '');
+
+            if ($tty && $tty !== '??' && $tty !== '?') {
+                $path = "/dev/{$tty}";
+
+                if (file_exists($path)) {
+                    return $path;
+                }
+            }
+
+            $search = $childPid;
+        }
+
+        return null;
     }
 
     /**

@@ -725,12 +725,13 @@
                 >
                     <div class="flex min-w-0 items-center gap-2">
                         <span class="rounded bg-cyan-500/20 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-wider text-cyan-400">TERMINAL</span>
-                        <span
-                            class="text-zinc-500 transition hover:text-cyan-400"
+                        <button
+                            class="cursor-pointer text-zinc-500 transition hover:text-cyan-400"
                             :title="webtermCommands[panelId] || 'claude'"
+                            x-on:click.stop="navigator.clipboard.writeText(webtermCommands[panelId] || 'claude')"
                         >
                             @include('orca::partials.icon', ['name' => 'command-line', 'class' => 'size-3.5'])
-                        </span>
+                        </button>
                         <span class="truncate text-xs font-medium text-white" x-text="'Session ' + panelId.substring(0, 8)"></span>
                     </div>
                     <div class="ml-2 flex flex-shrink-0 items-center gap-1">
