@@ -22,6 +22,9 @@ class WebTermApplication
     /** @var SplObjectStorage<ConnectionInterface, WebTermConnection> */
     private SplObjectStorage $connections;
 
+    /** @var array<string, WebTermConnection> Session ID => running WebTermConnection */
+    private array $sessions = [];
+
     private WebTermTokenService $tokenService;
 
     private ServerNegotiator $negotiator;
@@ -109,7 +112,8 @@ class WebTermApplication
             return;
         }
 
-        $session = OrcaSession::find($payload['session_id']);
+        $sessionId = $payload['session_id'];
+        $session = OrcaSession::find($sessionId);
 
         if (! $session) {
             $this->sendWsMessage($rawConn, json_encode(['type' => 'error', 'message' => 'Session not found']));
@@ -125,8 +129,25 @@ class WebTermApplication
             $this->sendWsMessage($rawConn, $data);
         };
 
-        $webTermConn = new WebTermConnection($sendCallback, $session, $this->loop);
-        $this->connections->attach($rawConn, $webTermConn);
+        // Check for existing running session to reconnect
+        $webTermConn = $this->sessions[$sessionId] ?? null;
+
+        if ($webTermConn && $webTermConn->isRunning()) {
+            // Reconnect to existing process
+            $webTermConn->reattach($sendCallback);
+            $this->connections->attach($rawConn, $webTermConn);
+
+            echo "[WebTerm] Reconnected to session {$sessionId}\n";
+        } else {
+            // Start a new process
+            $webTermConn = new WebTermConnection($sendCallback, $session, $this->loop);
+            $this->connections->attach($rawConn, $webTermConn);
+            $this->sessions[$sessionId] = $webTermConn;
+
+            $webTermConn->start();
+
+            echo "[WebTerm] Connection opened for session {$sessionId}\n";
+        }
 
         // Set up WebSocket message parsing via ratchet/rfc6455
         $closeFrameChecker = new CloseFrameChecker;
@@ -166,24 +187,34 @@ class WebTermApplication
         });
 
         $rawConn->on('close', function () use ($rawConn, $webTermConn): void {
-            $webTermConn->terminate();
+            // Detach client but keep process alive for reconnection
+            $webTermConn->detach();
             $this->connections->detach($rawConn);
             $this->connectionCount--;
 
-            echo "[WebTerm] Connection closed\n";
+            echo "[WebTerm] Client disconnected (session kept alive)\n";
         });
 
         $rawConn->on('error', function (\Throwable $e) use ($rawConn, $webTermConn): void {
             echo "[WebTerm] Error: {$e->getMessage()}\n";
-            $webTermConn->terminate();
+            $webTermConn->detach();
             $this->connections->detach($rawConn);
             $this->connectionCount--;
             $rawConn->close();
         });
+    }
 
-        $webTermConn->start();
+    /**
+     * Explicitly kill a session's process (called via panel kill button).
+     */
+    public function killSession(string $sessionId): void
+    {
+        $webTermConn = $this->sessions[$sessionId] ?? null;
 
-        echo "[WebTerm] Connection opened for session {$session->id}\n";
+        if ($webTermConn) {
+            $webTermConn->terminate();
+            unset($this->sessions[$sessionId]);
+        }
     }
 
     private function sendWsMessage(ConnectionInterface $conn, string $data): void

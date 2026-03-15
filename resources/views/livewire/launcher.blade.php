@@ -7,11 +7,23 @@
 
         // Multi-instance WebTerm state
         openWebtermPanels: @js($webtermSessionIds ?: []),
+        webtermUrls: @js($webtermUrls ?? []),
         webtermStates: {},
         minimizedPanels: {},
         panelPositions: {},
         topPanelId: null,
         _nextZ: 46,
+
+        init() {
+            // Auto-reconnect webterm panels that have URLs but no active connection
+            this.$nextTick(() => {
+                for (const [sessionId, wsUrl] of Object.entries(this.webtermUrls)) {
+                    if (!window._orcaWtInstances?.[sessionId]) {
+                        this.initWebTerm(wsUrl, sessionId);
+                    }
+                }
+            });
+        },
 
         initWebTerm(wsUrl, sessionId) {
             if (window._orcaWtInstances?.[sessionId]) {
@@ -62,6 +74,10 @@
         focusPanel(sessionId) {
             this.topPanelId = sessionId;
             this._nextZ++;
+            if (this._nextZ >= 50) {
+                this._nextZ = 46;
+                document.querySelectorAll('[id^=wt-panel-]').forEach(el => el.style.zIndex = 45);
+            }
             const el = document.getElementById('wt-panel-' + sessionId);
             if (el) el.style.zIndex = this._nextZ;
         },
@@ -632,11 +648,10 @@
 
             {{-- Taskbar strip --}}
             <div class="flex items-center gap-1.5 border-t border-zinc-200 bg-white/80 px-3 py-1.5 backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/80" @if ($pollInterval) wire:poll.{{ $pollInterval }} @endif>
-                {{-- Scrollable pills area --}}
+                {{-- WebTerm pills --}}
                 <div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
                     @foreach ($sessions as $session)
                         @if (in_array($session->id, $webtermSessionIds))
-                            {{-- WebTerm session pill — Alpine-only toggle (no server round-trip) --}}
                             <div wire:key="pill-{{ $session->id }}">
                                 <button
                                     x-on:click="toggleMinimize('{{ $session->id }}')"
@@ -650,132 +665,20 @@
                                         {{ Str::limit(rtrim(Str::before($session->parent?->prompt ?? $session->prompt, '# Debug'), " \t\n\r\0\x0B-"), 20) }}
                                     </span>
                                     <span
-                                        x-on:click.stop="closeWebTerm('{{ $session->id }}'); $wire.dismiss('{{ $session->id }}')"
+                                        x-on:click.stop="toggleMinimize('{{ $session->id }}')"
                                         class="ml-0.5 hidden rounded p-0.5 hover:bg-zinc-200 group-hover:inline-flex dark:hover:bg-zinc-700"
-                                        title="Close"
+                                        title="Minimize"
                                     >
                                         @include('orca::partials.icon', ['name' => 'x-mark', 'class' => 'size-3'])
                                     </span>
                                 </button>
                             </div>
-                        @else
-                            {{-- Standard session pill --}}
-                            <div
-                                wire:key="pill-{{ $session->id }}"
-                                @if ($expandedSessionId === $session->id) class="hidden" @endif
-                                @if ($session->isPoppedOut())
-                                    x-data="{ hoverPill: false, hoverThumb: false, ts: Date.now(), pos: { left: 0, top: 0 }, get hovering() { return this.hoverPill || this.hoverThumb } }"
-                                    x-on:mouseenter="
-                                        hoverPill = true;
-                                        ts = Date.now();
-                                        let rect = $el.getBoundingClientRect();
-                                        pos = { left: rect.left + rect.width / 2, top: rect.top };
-                                    "
-                                    x-on:mouseleave="hoverPill = false"
-                                @endif
-                            >
-                                <button
-                                    wire:click="toggleSession('{{ $session->id }}')"
-                                    @class([
-                                        'group relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition',
-                                        'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800',
-                                        'opacity-60' => $session->status->isTerminal(),
-                                    ])
-                                >
-                                    @include('orca::livewire.partials.status-dot', ['status' => $session->status])
-                                    @if ($session->isPoppedOut() && isset($heartbeatData[$session->id]))
-                                        @if (isset($heartbeatStale[$session->id]))
-                                            <span
-                                                wire:click.stop="resumeSessionInTerminal('{{ $session->id }}')"
-                                                class="text-red-400 transition hover:text-red-300"
-                                                title="Connection lost — click to resume in Terminal"
-                                            >
-                                                @include('orca::partials.icon', ['name' => 'signal-slash', 'class' => 'size-3'])
-                                            </span>
-                                        @else
-                                            @include('orca::partials.icon', ['name' => 'signal', 'class' => 'size-3 animate-pulse text-cyan-400'])
-                                        @endif
-                                    @endif
-                                    @if ($session->isClaude())
-                                        @include('orca::livewire.partials.permission-badge', ['session' => $session])
-                                    @endif
-                                    <span class="max-w-[120px] truncate">
-                                        {{ $session->isClaude() ? Str::limit(rtrim(Str::before($session->parent?->prompt ?? $session->prompt, '# Debug'), " \t\n\r\0\x0B-"), 20) : Str::limit($session->command, 20) }}
-                                    </span>
-
-                                    @if ($session->status->isTerminal())
-                                        <span
-                                            wire:click.stop="dismiss('{{ $session->id }}')"
-                                            class="ml-0.5 hidden rounded p-0.5 hover:bg-zinc-200 group-hover:inline-flex dark:hover:bg-zinc-700"
-                                            title="Dismiss"
-                                        >
-                                            @include('orca::partials.icon', ['name' => 'x-mark', 'class' => 'size-3'])
-                                        </span>
-                                    @endif
-                                </button>
-
-                                {{-- Hover thumbnail preview (fixed position to escape overflow clip) --}}
-                                @if ($session->isPoppedOut())
-                                    <template x-teleport="body">
-                                        <div
-                                            x-show="hovering"
-                                            x-cloak
-                                            x-transition:enter="transition ease-out duration-150"
-                                            x-transition:enter-start="opacity-0 translate-y-1"
-                                            x-transition:enter-end="opacity-100 translate-y-0"
-                                            x-transition:leave="transition ease-in duration-100"
-                                            x-transition:leave-start="opacity-100 translate-y-0"
-                                            x-transition:leave-end="opacity-0 translate-y-1"
-                                            class="fixed z-[9999]"
-                                            :style="`left: ${pos.left}px; top: ${pos.top}px; transform: translate(-50%, -100%); margin-top: -8px;`"
-                                            x-on:mouseenter="hoverThumb = true"
-                                            x-on:mouseleave="hoverThumb = false"
-                                        >
-                                            <div
-                                                class="group/thumb w-52 cursor-pointer overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl transition hover:border-cyan-500"
-                                                wire:click="focusTerminal('{{ $session->id }}')"
-                                                title="Open in Terminal"
-                                            >
-                                                <div class="relative overflow-hidden" style="max-height: 120px;">
-                                                    <img
-                                                        :src="hovering ? ('{{ route('orca.terminal-screenshot', $session->id) }}?t=' + ts) : null"
-                                                        alt="Terminal preview"
-                                                        class="w-full"
-                                                    />
-                                                    {{-- Terminal icon overlay --}}
-                                                    <div class="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover/thumb:bg-black/40">
-                                                        <div class="flex items-center gap-1.5 rounded-lg bg-zinc-900/80 px-2.5 py-1.5 text-xs font-medium text-cyan-400 opacity-0 shadow-lg transition group-hover/thumb:opacity-100">
-                                                            @include('orca::partials.icon', ['name' => 'command-line', 'class' => 'size-3.5'])
-                                                            <span>Terminal</span>
-                                                        </div>
-                                                    </div>
-                                                    <div class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-zinc-900 to-transparent"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </template>
-                                @endif
-                            </div>
                         @endif
                     @endforeach
                 </div>
 
-                {{-- Fixed actions --}}
+                {{-- Launcher button --}}
                 <div class="flex shrink-0 items-center gap-1">
-                    <x-makedev::skills-container popover-position="above">
-                    </x-makedev::skills-container>
-
-                    @if ($sessions->contains(fn ($s) => $s->status->isTerminal()))
-                        <button
-                            wire:click="clearAll"
-                            class="flex h-8 items-center gap-1 rounded-lg px-2 text-xs text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-white"
-                            title="Clear completed sessions"
-                        >
-                            @include('orca::partials.icon', ['name' => 'x-mark', 'class' => 'size-3.5'])
-                            <span class="hidden sm:inline">Clear</span>
-                        </button>
-                    @endif
-
                     <div class="relative">
                         <button
                             x-on:click="$wire.toggleLauncher(window.location.href)"
@@ -804,11 +707,8 @@
                 :id="'wt-panel-' + panelId"
                 class="fixed z-[45] flex flex-col rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
                 :style="getPanelStyle(panelId, idx)"
-                x-show="!minimizedPanels[panelId]"
                 x-on:mousedown="focusPanel(panelId)"
-                x-transition:enter="transition ease-out duration-150"
-                x-transition:enter-start="opacity-0 translate-y-2"
-                x-transition:enter-end="opacity-100 translate-y-0"
+                :class="{ 'hidden': minimizedPanels[panelId] }"
             >
                 {{-- Draggable panel header --}}
                 <div
@@ -835,9 +735,9 @@
                             @include('orca::partials.icon', ['name' => 'stop', 'class' => 'size-3.5'])
                         </button>
                         <button
-                            x-on:click="window.dispatchEvent(new CustomEvent('orca:panel-dismiss', { detail: { id: panelId } }))"
-                            class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-red-400"
-                            title="Close"
+                            x-on:click="toggleMinimize(panelId)"
+                            class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-white"
+                            title="Minimize"
                         >
                             @include('orca::partials.icon', ['name' => 'x-mark', 'class' => 'size-3.5'])
                         </button>

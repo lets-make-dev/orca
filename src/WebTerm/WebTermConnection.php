@@ -22,14 +22,37 @@ class WebTermConnection
 
     private bool $terminated = false;
 
+    private bool $detached = false;
+
+    /** @var list<string> Output buffered while no client is connected */
+    private array $replayBuffer = [];
+
+    private int $replayBufferMaxBytes = 100_000;
+
     /**
      * @param  Closure(string): void  $send
      */
     public function __construct(
-        private Closure $send,
+        private ?Closure $send,
         private OrcaSession $session,
         private LoopInterface $loop,
     ) {}
+
+    public function getSessionId(): string
+    {
+        return $this->session->id;
+    }
+
+    public function isRunning(): bool
+    {
+        if ($this->terminated || ! is_resource($this->process)) {
+            return false;
+        }
+
+        $status = proc_get_status($this->process);
+
+        return $status['running'];
+    }
 
     /**
      * Spawn the Claude CLI process in a PTY.
@@ -84,6 +107,37 @@ class WebTermConnection
             $this->readOutput();
         });
 
+    }
+
+    /**
+     * Detach the WebSocket client without killing the process.
+     * Output is buffered so it can be replayed on reconnect.
+     */
+    public function detach(): void
+    {
+        $this->send = null;
+        $this->detached = true;
+    }
+
+    /**
+     * Reattach a new WebSocket client, replaying buffered output.
+     *
+     * @param  Closure(string): void  $send
+     */
+    public function reattach(Closure $send): void
+    {
+        $this->send = $send;
+        $this->detached = false;
+
+        // Send current status
+        $this->sendJson(['type' => 'connected', 'session_id' => $this->session->id]);
+
+        // Replay buffered output
+        foreach ($this->replayBuffer as $chunk) {
+            $this->sendJson(['type' => 'output', 'data' => $chunk]);
+        }
+
+        $this->replayBuffer = [];
     }
 
     /**
@@ -190,7 +244,11 @@ class WebTermConnection
         }
 
         if ($output !== '') {
-            $this->sendJson(['type' => 'output', 'data' => $output]);
+            if ($this->detached) {
+                $this->bufferOutput($output);
+            } else {
+                $this->sendJson(['type' => 'output', 'data' => $output]);
+            }
         }
 
         // Check if process has exited
@@ -206,11 +264,18 @@ class WebTermConnection
                 }
 
                 if ($remaining !== '') {
-                    $this->sendJson(['type' => 'output', 'data' => $remaining]);
+                    if ($this->detached) {
+                        $this->bufferOutput($remaining);
+                    } else {
+                        $this->sendJson(['type' => 'output', 'data' => $remaining]);
+                    }
                 }
 
                 $exitCode = $status['exitcode'];
-                $this->sendJson(['type' => 'exit', 'code' => $exitCode]);
+
+                if (! $this->detached) {
+                    $this->sendJson(['type' => 'exit', 'code' => $exitCode]);
+                }
 
                 try {
                     $this->session->update([
@@ -227,9 +292,30 @@ class WebTermConnection
         }
     }
 
+    /**
+     * Buffer output while detached, trimming old data if over limit.
+     */
+    private function bufferOutput(string $data): void
+    {
+        $this->replayBuffer[] = $data;
+
+        // Trim from front if buffer grows too large
+        $totalSize = 0;
+        foreach ($this->replayBuffer as $chunk) {
+            $totalSize += strlen($chunk);
+        }
+
+        while ($totalSize > $this->replayBufferMaxBytes && count($this->replayBuffer) > 1) {
+            $removed = array_shift($this->replayBuffer);
+            $totalSize -= strlen($removed);
+        }
+    }
+
     private function sendJson(array $data): void
     {
-        ($this->send)(json_encode($data));
+        if ($this->send) {
+            ($this->send)(json_encode($data));
+        }
     }
 
     private function sendError(string $message): void

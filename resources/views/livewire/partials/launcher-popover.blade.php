@@ -1,6 +1,6 @@
 <div
     wire:ignore
-    class="absolute right-0 bottom-full mb-2 w-80 rounded-xl border border-zinc-200 bg-white p-4 shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
+    class="absolute right-0 bottom-full z-[9999] mb-2 w-80 rounded-xl border border-zinc-200 bg-white p-4 shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
     x-data="{
         annotating: false,
         capturing: false,
@@ -120,11 +120,7 @@
             }
         },
 
-        submitPlan() {
-            $wire.launchClaudePlan();
-        },
-
-        submitExecute() {
+        submit() {
             $wire.launchClaudeExec();
         },
 
@@ -139,7 +135,7 @@
     }"
     x-on:orca-annotator-cancelled.window="annotating = false"
 >
-    <form x-on:submit.prevent="submitPlan()" class="space-y-2">
+    <form x-on:submit.prevent="submit()" class="space-y-2">
         {{-- Module context indicator --}}
         @if (! empty($this->moduleContext))
             <div class="flex items-center gap-1.5 rounded-lg bg-blue-500/10 px-2.5 py-1.5">
@@ -217,8 +213,8 @@
                 placeholder="{{ ! empty($this->moduleContext) ? 'Ask about ' . ($this->moduleContext['name'] ?? 'this module') . '...' : 'Describe what you want Claude to do...' }}"
                 rows="3"
                 class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-900 placeholder-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder-zinc-500"
-                x-on:keydown.cmd.enter="submitPlan()"
-                x-on:keydown.ctrl.enter="submitPlan()"
+                x-on:keydown.cmd.enter="submit()"
+                x-on:keydown.ctrl.enter="submit()"
                 x-init="$nextTick(() => $el.focus())"
             ></textarea>
         </template>
@@ -319,12 +315,8 @@
 
             <div class="flex flex-1 items-center gap-2">
                 <button type="submit" class="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200">
-                    @include('orca::partials.icon', ['name' => 'play', 'variant' => 'mini', 'class' => 'size-3.5'])
-                    Plan
-                </button>
-                <button type="button" x-on:click="submitExecute()" class="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800">
-                    @include('orca::partials.icon', ['name' => 'bolt', 'variant' => 'mini', 'class' => 'size-3.5'])
-                    Execute
+                    @include('orca::partials.icon', ['name' => 'paper-airplane', 'variant' => 'mini', 'class' => 'size-3.5'])
+                    Send
                 </button>
                 @if ($canPopOut ?? false)
                     <button type="button" x-on:click="$wire.launchClaudeTerminal()" class="flex items-center justify-center rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 dark:text-zinc-500 dark:hover:bg-zinc-800" title="Open in Terminal.app">

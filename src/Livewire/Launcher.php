@@ -1180,7 +1180,12 @@ class Launcher extends MakeDevModuleComponent
                 ->all();
 
             if (count($activeWebtermIds) !== count($this->webtermSessionIds)) {
+                $prunedIds = array_diff($this->webtermSessionIds, $activeWebtermIds);
                 $this->webtermSessionIds = array_values($activeWebtermIds);
+
+                foreach ($prunedIds as $prunedId) {
+                    $this->dispatch('orca:webterm-disconnect', sessionId: $prunedId);
+                }
             }
         }
 
@@ -1206,6 +1211,13 @@ class Launcher extends MakeDevModuleComponent
                 $s->id => $s->isHeartbeatStale(),
             ])->filter()->all(),
             'webtermSessionIds' => $this->webtermSessionIds,
+            'webtermUrls' => collect($this->webtermSessionIds)->mapWithKeys(function (string $id) {
+                $token = app(WebTermTokenService::class)->generate($id);
+                $host = config('orca.webterm.host', '127.0.0.1');
+                $port = (int) config('orca.webterm.port', 8085);
+
+                return [$id => "ws://{$host}:{$port}?token=".urlencode($token)];
+            })->all(),
         ]);
     }
 }
