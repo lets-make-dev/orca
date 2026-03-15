@@ -10,17 +10,55 @@
         webtermSessionId: @js($webtermSessionId ?: null),
         webtermConnected: false,
         webtermExited: false,
+        webtermLog: [],
+
+        _wtLog(action, data = {}) {
+            const entry = { ts: new Date().toISOString(), action, ...data };
+            this.webtermLog.push(entry);
+            console.log('[WebTerm]', action, data);
+        },
+
+        debugWebTerm() {
+            const container = this.$refs.webtermContainer;
+            const state = {
+                webtermSessionId: this.webtermSessionId,
+                wireWebtermSessionId: this.$wire?.webtermSessionId,
+                wireExpandedSessionId: this.$wire?.expandedSessionId,
+                hasInstance: !!this.webterm,
+                connected: this.webtermConnected,
+                exited: this.webtermExited,
+                containerExists: !!container,
+                containerVisible: container ? container.offsetParent !== null : false,
+                containerSize: container ? { w: container.offsetWidth, h: container.offsetHeight } : null,
+                containerChildren: container ? container.children.length : 0,
+                log: this.webtermLog,
+            };
+            console.table(Object.entries(state).filter(([k]) => k !== 'log').map(([k,v]) => ({key:k, value: JSON.stringify(v)})));
+            console.log('[WebTerm] Full log:', this.webtermLog);
+            return state;
+        },
 
         initWebTerm(wsUrl, sessionId) {
+            this._wtLog('initWebTerm:start', { sessionId, wsUrl: wsUrl?.substring(0, 40), prevSessionId: this.webtermSessionId, hadInstance: !!this.webterm });
             this.destroyWebTerm();
             this.webtermSessionId = sessionId;
             this.webtermConnected = false;
             this.webtermExited = false;
 
             this.$nextTick(() => {
-                const container = this.$refs.webtermContainer;
+                // $refs may not resolve for elements added by Livewire morph, fallback to DOM query
+                const container = this.$refs.webtermContainer || this.$el.querySelector('[x-ref=webtermContainer]');
+                this._wtLog('initWebTerm:nextTick', {
+                    fromRefs: !!this.$refs.webtermContainer,
+                    fromQuery: !!this.$el.querySelector('[x-ref=webtermContainer]'),
+                    containerExists: !!container,
+                    containerVisible: container ? container.offsetParent !== null : false,
+                    containerSize: container ? { w: container.offsetWidth, h: container.offsetHeight } : null,
+                    OrcaWebTermLoaded: !!window.OrcaWebTerm,
+                });
+
                 if (!container || !window.OrcaWebTerm) {
-                    console.error('[WebTerm] Container or OrcaWebTerm not available', { container: !!container, OrcaWebTerm: !!window.OrcaWebTerm });
+                    this._wtLog('initWebTerm:ABORT', { container: !!container, OrcaWebTerm: !!window.OrcaWebTerm });
                     return;
                 }
 
@@ -28,18 +66,26 @@
                 container.innerHTML = '';
 
                 this.webterm = new window.OrcaWebTerm();
-                this.webterm.onConnected = () => { this.webtermConnected = true; };
-                this.webterm.onExit = (code) => { this.webtermExited = true; };
+                this.webterm.onConnected = () => {
+                    this.webtermConnected = true;
+                    this._wtLog('connected', { sessionId: this.webtermSessionId });
+                };
+                this.webterm.onExit = (code) => {
+                    this.webtermExited = true;
+                    this._wtLog('exited', { sessionId: this.webtermSessionId, code });
+                };
                 this.webterm.onError = (msg) => {
-                    console.error('[WebTerm]', msg);
+                    this._wtLog('error', { sessionId: this.webtermSessionId, msg });
                     if (!this.webtermConnected) { this.webtermExited = true; }
                 };
                 this.webterm.mount(container);
                 this.webterm.connect(wsUrl);
+                this._wtLog('initWebTerm:mounted', { sessionId });
             });
         },
 
         destroyWebTerm() {
+            this._wtLog('destroyWebTerm', { sessionId: this.webtermSessionId, hadInstance: !!this.webterm });
             if (this.webterm) {
                 try { this.webterm.dispose(); } catch (e) { /* addon may already be detached */ }
                 this.webterm = null;
@@ -50,7 +96,8 @@
         },
     }"
     x-on:orca:webterm-connect.window="initWebTerm($event.detail.wsUrl, $event.detail.sessionId)"
-    x-on:orca:webterm-disconnect.window="if ($event.detail.sessionId === webtermSessionId) destroyWebTerm()"
+    x-on:orca:webterm-disconnect.window="_wtLog('disconnect:event', { eventSessionId: $event.detail.sessionId, currentSessionId: webtermSessionId }); if ($event.detail.sessionId === webtermSessionId) destroyWebTerm()"
+    x-init="window.orcaDebugWebTerm = () => debugWebTerm()"
 >
     @if ($sessions->isEmpty() && ! $launcherOpen)
         {{-- Empty state: floating "+" button --}}
@@ -572,33 +619,33 @@
                     </div>
                     @endif
 
-                    {{-- Persistent WebTerm container (stays in DOM across minimize/expand cycles) --}}
-                    @if ($webtermSessionId)
+                    {{-- Persistent WebTerm container — wire:ignore prevents Livewire morph from resetting Alpine x-show state --}}
+                    <div
+                        wire:ignore
+                        class="flex flex-1 flex-col"
+                        style="min-height: 300px;"
+                        x-show="webtermSessionId && $wire.expandedSessionId === webtermSessionId"
+                        x-cloak
+                    >
+                        {{-- Connection status overlay --}}
                         <div
-                            class="flex flex-1 flex-col"
-                            style="min-height: 300px;"
-                            x-show="$wire.expandedSessionId === webtermSessionId"
+                            x-show="!webtermConnected && !webtermExited"
+                            class="flex items-center justify-center gap-2 border-b border-zinc-700 px-3 py-2"
                         >
-                            {{-- Connection status overlay --}}
-                            <div
-                                x-show="!webtermConnected && !webtermExited"
-                                class="flex items-center justify-center gap-2 border-b border-zinc-700 px-3 py-2"
-                            >
-                                <span class="relative flex h-2 w-2">
-                                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
-                                    <span class="relative inline-flex h-2 w-2 rounded-full bg-cyan-500"></span>
-                                </span>
-                                <span class="text-xs text-cyan-400">Connecting...</span>
-                            </div>
-                            <div
-                                x-show="webtermExited"
-                                class="flex items-center justify-center gap-2 border-b border-zinc-700 px-3 py-2"
-                            >
-                                <span class="text-xs text-zinc-400">Session ended</span>
-                            </div>
-                            <div x-ref="webtermContainer" wire:ignore class="flex-1 overflow-hidden"></div>
+                            <span class="relative flex h-2 w-2">
+                                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
+                                <span class="relative inline-flex h-2 w-2 rounded-full bg-cyan-500"></span>
+                            </span>
+                            <span class="text-xs text-cyan-400">Connecting...</span>
                         </div>
-                    @endif
+                        <div
+                            x-show="webtermExited"
+                            class="flex items-center justify-center gap-2 border-b border-zinc-700 px-3 py-2"
+                        >
+                            <span class="text-xs text-zinc-400">Session ended</span>
+                        </div>
+                        <div x-ref="webtermContainer" class="flex-1 overflow-hidden"></div>
+                    </div>
                 </div>
 
             @endif

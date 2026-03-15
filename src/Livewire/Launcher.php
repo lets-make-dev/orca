@@ -50,6 +50,7 @@ class Launcher extends MakeDevModuleComponent
 
     public string $screenshotPath = '';
 
+    #[Session]
     public string $webtermSessionId = '';
 
     public string $sourceUrl = '';
@@ -559,6 +560,28 @@ class Launcher extends MakeDevModuleComponent
         $this->moduleContext = [];
         $this->expandedSessionId = $session->id;
         $this->launcherOpen = false;
+    }
+
+    public function launchClaudePlan(): void
+    {
+        if ($this->isWebTermAvailable()) {
+            $this->launchClaudeWebTerm();
+        } elseif (app(PopOutTerminalService::class)->isAvailable()) {
+            $this->launchClaudeTerminal();
+        } else {
+            $this->launchClaude();
+        }
+    }
+
+    public function launchClaudeExec(): void
+    {
+        if ($this->isWebTermAvailable()) {
+            $this->launchClaudeWebTermExecute();
+        } elseif (app(PopOutTerminalService::class)->isAvailable()) {
+            $this->launchClaudeTerminalExecute();
+        } else {
+            $this->launchClaudeExecute();
+        }
     }
 
     public function launchClaudeWebTerm(): void
@@ -1132,7 +1155,6 @@ class Launcher extends MakeDevModuleComponent
             'currentToolPhrase' => $currentToolPhrase,
             'pollInterval' => $pollInterval,
             'canPopOut' => app(PopOutTerminalService::class)->isAvailable(),
-            'canWebTerm' => $this->isWebTermAvailable(),
             'launcherDebugContext' => $this->launcherOpen && $this->sourceUrl ? $this->resolveCurrentPageDebugContext() : null,
             'heartbeatData' => $sessions->mapWithKeys(fn ($s) => [
                 $s->id => $s->last_heartbeat_at?->toIso8601String(),
