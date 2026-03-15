@@ -120,8 +120,14 @@
             }
         },
 
+        autoExecute: false,
+
         submit() {
-            $wire.launchClaudeExec();
+            if (this.autoExecute) {
+                $wire.launchClaudeExec();
+            } else {
+                $wire.launchClaudePlan();
+            }
         },
 
         destroy() {
@@ -250,6 +256,17 @@
                         Context
                     </button>
                     <div class="flex items-center gap-1">
+                        <button
+                            type="button"
+                            x-on:click="autoExecute = !autoExecute"
+                            class="rounded p-0.5 transition"
+                            :class="autoExecute
+                                ? 'bg-amber-500/15 text-amber-400 hover:text-amber-300'
+                                : 'text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300'"
+                            :title="autoExecute ? 'Auto-execute enabled (skip plan mode)' : 'Click to enable auto-execute'"
+                        >
+                            @include('orca::partials.icon', ['name' => 'bolt', 'class' => 'size-3'])
+                        </button>
                         <button
                             type="button"
                             x-on:click="copyDebugContext()"

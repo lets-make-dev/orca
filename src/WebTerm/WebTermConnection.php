@@ -74,6 +74,13 @@ class WebTermConnection
     {
         $service = new PopOutTerminalService;
         $claudeCmd = $service->buildClaudeCommand($this->session, true);
+
+        // Pass the prompt as a positional argument so Claude starts an interactive
+        // session with the prompt already submitted (unlike -p which exits after).
+        if ($this->session->prompt && ! $this->session->resume_session_id && ! $this->session->claude_session_id) {
+            $claudeCmd .= ' '.escapeshellarg($this->session->prompt);
+        }
+
         $workingDir = $this->session->working_directory ?: base_path();
 
         // Use script to allocate a PTY on macOS/Linux
