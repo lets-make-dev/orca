@@ -50,8 +50,9 @@ class Launcher extends MakeDevModuleComponent
 
     public string $screenshotPath = '';
 
+    /** @var string[] */
     #[Session]
-    public string $webtermSessionId = '';
+    public array $webtermSessionIds = [];
 
     public string $sourceUrl = '';
 
@@ -141,8 +142,31 @@ class Launcher extends MakeDevModuleComponent
 
     public function toggleSession(string $id): void
     {
-        $this->expandedSessionId = $this->expandedSessionId === $id ? '' : $id;
         $this->launcherOpen = false;
+
+        // If this is a webterm session, toggle its floating panel via Alpine
+        if (in_array($id, $this->webtermSessionIds)) {
+            $this->dispatch('orca:webterm-toggle', sessionId: $id);
+
+            return;
+        }
+
+        // Reconnect webterm when toggling a popped-out session that isn't in webterm yet
+        $session = OrcaSession::find($id);
+        if ($session?->isPoppedOut() && $session->status->isActive() && $this->isWebTermAvailable()) {
+            $token = app(WebTermTokenService::class)->generate($session->id);
+            $host = config('orca.webterm.host', '127.0.0.1');
+            $port = (int) config('orca.webterm.port', 8085);
+            $wsUrl = "ws://{$host}:{$port}?token=".urlencode($token);
+
+            $this->webtermSessionIds[] = $session->id;
+            $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
+
+            return;
+        }
+
+        // Default: toggle the single inline panel
+        $this->expandedSessionId = $this->expandedSessionId === $id ? '' : $id;
     }
 
     public function toggleLauncher(string $sourceUrl = ''): void
@@ -321,17 +345,22 @@ class Launcher extends MakeDevModuleComponent
     {
         $session = OrcaSession::find($id);
 
-        if (! $session || $session->status->isTerminal()) {
+        if (! $session) {
+            return;
+        }
+
+        // Always clean up webterm panel state, even if session already ended
+        if (in_array($id, $this->webtermSessionIds)) {
+            $this->webtermSessionIds = array_values(array_diff($this->webtermSessionIds, [$id]));
+            $this->dispatch('orca:webterm-disconnect', sessionId: $id);
+        }
+
+        if ($session->status->isTerminal()) {
             return;
         }
 
         // Terminate the terminal window for popped-out sessions
         if ($session->status === OrcaSessionStatus::PoppedOut) {
-            // Notify browser to disconnect webterm if open
-            if ($this->webtermSessionId === $id) {
-                $this->webtermSessionId = '';
-            }
-            $this->dispatch('orca:webterm-disconnect', sessionId: $id);
 
             app(PopOutTerminalService::class)->terminateTerminal($session);
 
@@ -622,8 +651,7 @@ class Launcher extends MakeDevModuleComponent
         $this->sourceUrl = '';
         $this->debugContext = '';
         $this->moduleContext = [];
-        $this->webtermSessionId = $session->id;
-        $this->expandedSessionId = $session->id;
+        $this->webtermSessionIds[] = $session->id;
         $this->launcherOpen = false;
 
         $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
@@ -667,8 +695,7 @@ class Launcher extends MakeDevModuleComponent
         $this->sourceUrl = '';
         $this->debugContext = '';
         $this->moduleContext = [];
-        $this->webtermSessionId = $session->id;
-        $this->expandedSessionId = $session->id;
+        $this->webtermSessionIds[] = $session->id;
         $this->launcherOpen = false;
 
         $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
@@ -719,8 +746,7 @@ class Launcher extends MakeDevModuleComponent
         $port = (int) config('orca.webterm.port', 8085);
         $wsUrl = "ws://{$host}:{$port}?token=".urlencode($token);
 
-        $this->webtermSessionId = $session->id;
-        $this->expandedSessionId = $session->id;
+        $this->webtermSessionIds[] = $session->id;
 
         $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
     }
@@ -846,6 +872,11 @@ class Launcher extends MakeDevModuleComponent
 
         if ($this->expandedSessionId === $id) {
             $this->expandedSessionId = '';
+        }
+
+        if (in_array($id, $this->webtermSessionIds)) {
+            $this->webtermSessionIds = array_values(array_diff($this->webtermSessionIds, [$id]));
+            $this->dispatch('orca:webterm-disconnect', sessionId: $id);
         }
 
         // Also delete the parent session if this is a child
@@ -1141,9 +1172,21 @@ class Launcher extends MakeDevModuleComponent
             }
         }
 
+        // Prune dead webterm sessions so panels don't reappear on refresh
+        if ($this->webtermSessionIds) {
+            $activeWebtermIds = $sessions
+                ->filter(fn (OrcaSession $s) => in_array($s->id, $this->webtermSessionIds) && $s->status->isActive())
+                ->pluck('id')
+                ->all();
+
+            if (count($activeWebtermIds) !== count($this->webtermSessionIds)) {
+                $this->webtermSessionIds = array_values($activeWebtermIds);
+            }
+        }
+
         // Determine poll interval: no polling needed when only webterm sessions are active
         $hasNonWebtermActive = $sessions->contains(
-            fn (OrcaSession $s) => $s->status->isActive() && $s->id !== $this->webtermSessionId
+            fn (OrcaSession $s) => $s->status->isActive() && ! in_array($s->id, $this->webtermSessionIds)
         );
         $pollInterval = $hasNonWebtermActive ? '1s' : null;
 
@@ -1162,6 +1205,7 @@ class Launcher extends MakeDevModuleComponent
             'heartbeatStale' => $sessions->mapWithKeys(fn ($s) => [
                 $s->id => $s->isHeartbeatStale(),
             ])->filter()->all(),
+            'webtermSessionIds' => $this->webtermSessionIds,
         ]);
     }
 }

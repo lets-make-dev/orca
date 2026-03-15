@@ -95,7 +95,13 @@ class OrcaWebTerm {
         };
 
         this.socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+            if (!event.data) return;
+            let data;
+            try {
+                data = JSON.parse(event.data);
+            } catch (e) {
+                return;
+            }
 
             switch (data.type) {
                 case 'connected':
