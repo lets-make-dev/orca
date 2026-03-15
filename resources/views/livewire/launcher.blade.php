@@ -85,11 +85,11 @@
         },
 
         startDrag(panelId, event) {
+            this.focusPanel(panelId);
             if (event.target.closest('button')) return;
             event.preventDefault();
             const el = document.getElementById('wt-panel-' + panelId);
             if (!el) return;
-            this.focusPanel(panelId);
             const rect = el.getBoundingClientRect();
             const offsetX = event.clientX - rect.left;
             const offsetY = event.clientY - rect.top;
@@ -118,7 +118,13 @@
             if (pos) {
                 return `width: 520px; left: ${pos.x}px; top: ${pos.y}px;`;
             }
-            return `width: 520px; right: ${idx * 532 + 12}px; bottom: 48px;`;
+            let dockedIdx = 0;
+            for (let i = 0; i < idx; i++) {
+                if (!this.panelPositions[this.openWebtermPanels[i]]) {
+                    dockedIdx++;
+                }
+            }
+            return `width: 520px; right: ${dockedIdx * 532 + 12}px; bottom: 48px;`;
         },
     }"
     x-on:orca:webterm-connect.window="if ($event.detail.command) webtermCommands[$event.detail.sessionId] = $event.detail.command; initWebTerm($event.detail.wsUrl, $event.detail.sessionId)"
