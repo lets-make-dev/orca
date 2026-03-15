@@ -1,4 +1,57 @@
-<div data-orca-launcher x-data="{ orcaSurfaced: false, confirmExecute: false, scrollToBottom(el) { $nextTick(() => el.scrollTop = el.scrollHeight) } }">
+<div
+    data-orca-launcher
+    x-data="{
+        orcaSurfaced: false,
+        confirmExecute: false,
+        scrollToBottom(el) { $nextTick(() => el.scrollTop = el.scrollHeight) },
+
+        // WebTerm state
+        webterm: null,
+        webtermSessionId: @js($webtermSessionId ?: null),
+        webtermConnected: false,
+        webtermExited: false,
+
+        initWebTerm(wsUrl, sessionId) {
+            this.destroyWebTerm();
+            this.webtermSessionId = sessionId;
+            this.webtermConnected = false;
+            this.webtermExited = false;
+
+            this.$nextTick(() => {
+                const container = this.$refs.webtermContainer;
+                if (!container || !window.OrcaWebTerm) {
+                    console.error('[WebTerm] Container or OrcaWebTerm not available', { container: !!container, OrcaWebTerm: !!window.OrcaWebTerm });
+                    return;
+                }
+
+                // Clear leftover DOM from previous terminal (dispose may not fully clean up)
+                container.innerHTML = '';
+
+                this.webterm = new window.OrcaWebTerm();
+                this.webterm.onConnected = () => { this.webtermConnected = true; };
+                this.webterm.onExit = (code) => { this.webtermExited = true; };
+                this.webterm.onError = (msg) => {
+                    console.error('[WebTerm]', msg);
+                    if (!this.webtermConnected) { this.webtermExited = true; }
+                };
+                this.webterm.mount(container);
+                this.webterm.connect(wsUrl);
+            });
+        },
+
+        destroyWebTerm() {
+            if (this.webterm) {
+                try { this.webterm.dispose(); } catch (e) { /* addon may already be detached */ }
+                this.webterm = null;
+            }
+            this.webtermSessionId = null;
+            this.webtermConnected = false;
+            this.webtermExited = false;
+        },
+    }"
+    x-on:orca:webterm-connect.window="initWebTerm($event.detail.wsUrl, $event.detail.sessionId)"
+    x-on:orca:webterm-disconnect.window="if ($event.detail.sessionId === webtermSessionId) destroyWebTerm()"
+>
     @if ($sessions->isEmpty() && ! $launcherOpen)
         {{-- Empty state: floating "+" button --}}
         <div class="pointer-events-auto fixed right-4 bottom-4 z-50 flex items-center gap-1.5">
@@ -19,8 +72,10 @@
     @else
         <div class="pointer-events-auto fixed inset-x-0 bottom-0 z-50">
             {{-- Thread Panel --}}
-            @if ($expandedSession)
-                <div class="relative ml-auto mb-1 mr-3 flex max-h-[60vh] w-full max-w-lg flex-col rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+            @if ($expandedSession || $webtermSessionId)
+                <div class="relative ml-auto mb-1 mr-3 flex max-h-[60vh] w-full max-w-lg flex-col rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl" x-show="$wire.expandedSessionId !== ''" x-cloak>
+
+                    @if ($expandedSession)
                     {{-- Thread header --}}
                     <div class="flex items-center justify-between border-b border-zinc-700 px-4 py-2.5">
                         @php
@@ -75,90 +130,95 @@
 
                     {{-- Messages area (timer floats inside) --}}
                     @if ($expandedSession->isClaude() && $expandedSession->isPoppedOut())
-                        <div
-                            class="flex flex-1 flex-col items-center justify-center"
-                            x-data="{
-                                loaded: false,
-                                timestamp: Date.now(),
-                                elapsed: '0:00',
-                                init() {
-                                    const started = new Date('{{ $expandedSession->created_at->toIso8601String() }}');
-                                    const tick = () => {
-                                        const secs = Math.floor((Date.now() - started.getTime()) / 1000);
-                                        const m = Math.floor(secs / 60);
-                                        const s = secs % 60;
-                                        this.elapsed = m + ':' + String(s).padStart(2, '0');
-                                    };
-                                    tick();
-                                    this.interval = setInterval(() => {
-                                        this.timestamp = Date.now();
-                                        tick();
-                                    }, 1000);
-                                },
-                                destroy() { clearInterval(this.interval); }
-                            }"
-                        >
-                            {{-- Screenshot thumbnail: overflow-masked, shows top portion --}}
+                        @if ($webtermSessionId === $expandedSession->id)
+                            {{-- WebTerm: rendered in persistent container below --}}
+                        @else
+                            {{-- Terminal.app fallback: screenshot polling --}}
                             <div
-                                x-show="loaded"
-                                wire:click="focusTerminal('{{ $expandedSession->id }}')"
-                                class="relative w-full cursor-pointer overflow-hidden rounded-lg border border-zinc-700 transition hover:border-cyan-500"
-                                style="max-height: 260px;"
-                                title="Click to focus Terminal"
+                                class="flex flex-1 flex-col items-center justify-center"
+                                x-data="{
+                                    loaded: false,
+                                    timestamp: Date.now(),
+                                    elapsed: '0:00',
+                                    init() {
+                                        const started = new Date('{{ $expandedSession->created_at->toIso8601String() }}');
+                                        const tick = () => {
+                                            const secs = Math.floor((Date.now() - started.getTime()) / 1000);
+                                            const m = Math.floor(secs / 60);
+                                            const s = secs % 60;
+                                            this.elapsed = m + ':' + String(s).padStart(2, '0');
+                                        };
+                                        tick();
+                                        this.interval = setInterval(() => {
+                                            this.timestamp = Date.now();
+                                            tick();
+                                        }, 1000);
+                                    },
+                                    destroy() { clearInterval(this.interval); }
+                                }"
                             >
-                                <img
-                                    :src="'{{ route('orca.terminal-screenshot', $expandedSession->id) }}?t=' + timestamp"
-                                    alt="Terminal preview"
-                                    class="w-full"
-                                    x-on:load="loaded = true"
-                                    x-on:error="loaded = false"
-                                />
-                                {{-- Elapsed timer overlay --}}
-                                <div class="pointer-events-none absolute top-1.5 right-1.5 z-10 rounded-full bg-red-600/90 px-2 py-0.5 font-mono text-[10px] tabular-nums text-white" x-text="elapsed"></div>
-                                {{-- Fade-out gradient at bottom edge --}}
-                                <div class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-zinc-900 to-transparent"></div>
-                            </div>
-
-                            {{-- Fallback: pulsing dot + text (shown until screenshot loads) --}}
-                            <template x-if="!loaded">
-                                <div class="flex flex-col items-center gap-3 py-4">
-                                    @if (isset($heartbeatStale[$expandedSession->id]))
-                                        @include('orca::partials.icon', ['name' => 'signal-slash', 'variant' => 'mini', 'class' => 'size-5 text-red-400'])
-                                        <span class="text-sm font-medium text-red-400">Connection Lost</span>
-                                        <button
-                                            wire:click="resumeSessionInTerminal('{{ $expandedSession->id }}')"
-                                            class="rounded bg-red-500/20 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/30"
-                                        >
-                                            Resume in Terminal
-                                        </button>
-                                    @else
-                                        <span class="relative flex h-3 w-3">
-                                            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
-                                            <span class="relative inline-flex h-3 w-3 rounded-full bg-cyan-500"></span>
-                                        </span>
-                                        <span class="text-sm font-medium text-cyan-400">Running in Terminal</span>
-                                        <span class="text-xs text-zinc-500">Screenshot will appear shortly...</span>
-                                    @endif
-                                </div>
-                            </template>
-
-                            {{-- Focus terminal link --}}
-                            @if (isset($heartbeatStale[$expandedSession->id]))
-                                <button
-                                    wire:click="resumeSessionInTerminal('{{ $expandedSession->id }}')"
-                                    class="mt-1 text-xs text-red-400 transition hover:text-red-300"
-                                >
-                                    Resume in Terminal
-                                </button>
-                            @else
-                                <button
+                                {{-- Screenshot thumbnail: overflow-masked, shows top portion --}}
+                                <div
+                                    x-show="loaded"
                                     wire:click="focusTerminal('{{ $expandedSession->id }}')"
-                                    class="mt-1 text-xs text-zinc-500 transition hover:text-cyan-400"
+                                    class="relative w-full cursor-pointer overflow-hidden rounded-lg border border-zinc-700 transition hover:border-cyan-500"
+                                    style="max-height: 260px;"
+                                    title="Click to focus Terminal"
                                 >
-                                    Focus Terminal
-                                </button>
-                            @endif
-                        </div>
+                                    <img
+                                        :src="'{{ route('orca.terminal-screenshot', $expandedSession->id) }}?t=' + timestamp"
+                                        alt="Terminal preview"
+                                        class="w-full"
+                                        x-on:load="loaded = true"
+                                        x-on:error="loaded = false"
+                                    />
+                                    {{-- Elapsed timer overlay --}}
+                                    <div class="pointer-events-none absolute top-1.5 right-1.5 z-10 rounded-full bg-red-600/90 px-2 py-0.5 font-mono text-[10px] tabular-nums text-white" x-text="elapsed"></div>
+                                    {{-- Fade-out gradient at bottom edge --}}
+                                    <div class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-zinc-900 to-transparent"></div>
+                                </div>
+
+                                {{-- Fallback: pulsing dot + text (shown until screenshot loads) --}}
+                                <template x-if="!loaded">
+                                    <div class="flex flex-col items-center gap-3 py-4">
+                                        @if (isset($heartbeatStale[$expandedSession->id]))
+                                            @include('orca::partials.icon', ['name' => 'signal-slash', 'variant' => 'mini', 'class' => 'size-5 text-red-400'])
+                                            <span class="text-sm font-medium text-red-400">Connection Lost</span>
+                                            <button
+                                                wire:click="resumeSessionInTerminal('{{ $expandedSession->id }}')"
+                                                class="rounded bg-red-500/20 px-3 py-1 text-xs font-medium text-red-300 transition hover:bg-red-500/30"
+                                            >
+                                                Resume in Terminal
+                                            </button>
+                                        @else
+                                            <span class="relative flex h-3 w-3">
+                                                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
+                                                <span class="relative inline-flex h-3 w-3 rounded-full bg-cyan-500"></span>
+                                            </span>
+                                            <span class="text-sm font-medium text-cyan-400">Running in Terminal</span>
+                                            <span class="text-xs text-zinc-500">Screenshot will appear shortly...</span>
+                                        @endif
+                                    </div>
+                                </template>
+
+                                {{-- Focus terminal link --}}
+                                @if (isset($heartbeatStale[$expandedSession->id]))
+                                    <button
+                                        wire:click="resumeSessionInTerminal('{{ $expandedSession->id }}')"
+                                        class="mt-1 text-xs text-red-400 transition hover:text-red-300"
+                                    >
+                                        Resume in Terminal
+                                    </button>
+                                @else
+                                    <button
+                                        wire:click="focusTerminal('{{ $expandedSession->id }}')"
+                                        class="mt-1 text-xs text-zinc-500 transition hover:text-cyan-400"
+                                    >
+                                        Focus Terminal
+                                    </button>
+                                @endif
+                            </div>
+                        @endif
                     @elseif ($expandedSession->isClaude())
                         <div
                             class="flex-1 space-y-1.5 overflow-y-auto p-3 text-xs text-zinc-300"
@@ -510,19 +570,48 @@
                             </div>
                         </div>
                     </div>
+                    @endif
+
+                    {{-- Persistent WebTerm container (stays in DOM across minimize/expand cycles) --}}
+                    @if ($webtermSessionId)
+                        <div
+                            class="flex flex-1 flex-col"
+                            style="min-height: 300px;"
+                            x-show="$wire.expandedSessionId === webtermSessionId"
+                        >
+                            {{-- Connection status overlay --}}
+                            <div
+                                x-show="!webtermConnected && !webtermExited"
+                                class="flex items-center justify-center gap-2 border-b border-zinc-700 px-3 py-2"
+                            >
+                                <span class="relative flex h-2 w-2">
+                                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
+                                    <span class="relative inline-flex h-2 w-2 rounded-full bg-cyan-500"></span>
+                                </span>
+                                <span class="text-xs text-cyan-400">Connecting...</span>
+                            </div>
+                            <div
+                                x-show="webtermExited"
+                                class="flex items-center justify-center gap-2 border-b border-zinc-700 px-3 py-2"
+                            >
+                                <span class="text-xs text-zinc-400">Session ended</span>
+                            </div>
+                            <div x-ref="webtermContainer" wire:ignore class="flex-1 overflow-hidden"></div>
+                        </div>
+                    @endif
                 </div>
 
             @endif
 
             {{-- Taskbar strip --}}
-            <div class="flex items-center gap-1.5 border-t border-zinc-200 bg-white/80 px-3 py-1.5 backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/80" @if ($hasActiveSessions) wire:poll.1s @endif>
+            <div class="flex items-center gap-1.5 border-t border-zinc-200 bg-white/80 px-3 py-1.5 backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/80" @if ($pollInterval) wire:poll.{{ $pollInterval }} @endif>
                 {{-- Scrollable pills area --}}
                 <div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
                     @foreach ($sessions as $session)
                         <div
                             wire:key="pill-{{ $session->id }}"
                             @if ($expandedSessionId === $session->id) class="hidden" @endif
-                            @if ($session->isPoppedOut())
+                            @if ($session->isPoppedOut() && $webtermSessionId !== $session->id)
                                 x-data="{ hoverPill: false, hoverThumb: false, ts: Date.now(), pos: { left: 0, top: 0 }, get hovering() { return this.hoverPill || this.hoverThumb } }"
                                 x-on:mouseenter="
                                     hoverPill = true;
@@ -574,7 +663,7 @@
                             </button>
 
                             {{-- Hover thumbnail preview (fixed position to escape overflow clip) --}}
-                            @if ($session->isPoppedOut())
+                            @if ($session->isPoppedOut() && $webtermSessionId !== $session->id)
                                 <template x-teleport="body">
                                     <div
                                         x-show="hovering"
@@ -597,7 +686,7 @@
                                         >
                                             <div class="relative overflow-hidden" style="max-height: 120px;">
                                                 <img
-                                                    :src="'{{ route('orca.terminal-screenshot', $session->id) }}?t=' + ts"
+                                                    :src="hovering ? ('{{ route('orca.terminal-screenshot', $session->id) }}?t=' + ts) : null"
                                                     alt="Terminal preview"
                                                     class="w-full"
                                                 />

@@ -32,5 +32,7 @@ class RouteServiceProvider extends ServiceProvider
     {
         Route::get('/orca/orca.css', [AssetController::class, 'css']);
         Route::get('/orca/orca.js', [AssetController::class, 'js']);
+        Route::get('/orca/orca-webterm.js', [AssetController::class, 'webtermJs']);
+        Route::get('/orca/orca-webterm.css', [AssetController::class, 'webtermCss']);
     }
 }

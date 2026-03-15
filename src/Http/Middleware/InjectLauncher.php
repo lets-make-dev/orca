@@ -28,9 +28,23 @@ class InjectLauncher
         $jsVersion = @filemtime($distDir.'/orca-annotator.js') ?: 0;
 
         $cssTag = '<link rel="stylesheet" href="/orca/orca.css?v='.$cssVersion.'">';
+
+        // Inject webterm assets if the built files exist
+        $webtermCssVersion = @filemtime($distDir.'/orca-webterm.css') ?: 0;
+        $webtermJsVersion = @filemtime($distDir.'/orca-webterm.js') ?: 0;
+
+        if ($webtermCssVersion) {
+            $cssTag .= "\n".'<link rel="stylesheet" href="/orca/orca-webterm.css?v='.$webtermCssVersion.'">';
+        }
+
         $content = str_replace('</head>', $cssTag."\n</head>", $content);
 
         $jsTag = '<script src="/orca/orca.js?v='.$jsVersion.'" defer></script>';
+
+        if ($webtermJsVersion) {
+            $jsTag .= "\n".'<script src="/orca/orca-webterm.js?v='.$webtermJsVersion.'" defer></script>';
+        }
+
         $livewireTag = Blade::render('@livewire(\'orca-launcher\')');
 
         $content = str_replace('</body>', $jsTag."\n".$livewireTag."\n</body>", $content);

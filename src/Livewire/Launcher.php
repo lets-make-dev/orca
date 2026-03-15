@@ -18,6 +18,7 @@ use MakeDev\Orca\Services\ClaudeEventParser;
 use MakeDev\Orca\Services\PopOutTerminalService;
 use MakeDev\Orca\Services\RouteResolver;
 use MakeDev\Orca\Services\SessionChannel;
+use MakeDev\Orca\WebTerm\WebTermTokenService;
 
 class Launcher extends MakeDevModuleComponent
 {
@@ -48,6 +49,8 @@ class Launcher extends MakeDevModuleComponent
     public int $toolPhraseSetAt = 0;
 
     public string $screenshotPath = '';
+
+    public string $webtermSessionId = '';
 
     public string $sourceUrl = '';
 
@@ -323,6 +326,12 @@ class Launcher extends MakeDevModuleComponent
 
         // Terminate the terminal window for popped-out sessions
         if ($session->status === OrcaSessionStatus::PoppedOut) {
+            // Notify browser to disconnect webterm if open
+            if ($this->webtermSessionId === $id) {
+                $this->webtermSessionId = '';
+            }
+            $this->dispatch('orca:webterm-disconnect', sessionId: $id);
+
             app(PopOutTerminalService::class)->terminateTerminal($session);
 
             $session->update([
@@ -550,6 +559,171 @@ class Launcher extends MakeDevModuleComponent
         $this->moduleContext = [];
         $this->expandedSessionId = $session->id;
         $this->launcherOpen = false;
+    }
+
+    public function launchClaudeWebTerm(): void
+    {
+        if (! $this->isWebTermAvailable()) {
+            return;
+        }
+
+        $this->validate([
+            'prompt' => 'required|string|max:10000',
+        ]);
+        $prompt = $this->buildPromptWithScreenshot($this->prompt);
+        $prompt = $this->appendModuleContext($prompt);
+        $prompt = $this->appendDebugContext($prompt);
+
+        $session = OrcaSession::create([
+            'session_type' => OrcaSessionType::Claude,
+            'prompt' => $prompt,
+            'screenshot_path' => $this->screenshotPath ?: null,
+            'source_url' => $this->sourceUrl ?: null,
+            ...$this->resolveSessionContext(),
+            'model' => $this->model,
+            'permission_mode' => 'plan',
+            'max_turns' => config('orca.claude.max_turns', 50),
+            'allowed_tools' => config('orca.claude.default_allowed_tools', []) ?: null,
+            'working_directory' => base_path(),
+            'status' => OrcaSessionStatus::PoppedOut,
+            'popped_out_at' => now(),
+        ]);
+
+        $token = app(WebTermTokenService::class)->generate($session->id);
+        $host = config('orca.webterm.host', '127.0.0.1');
+        $port = (int) config('orca.webterm.port', 8085);
+        $wsUrl = "ws://{$host}:{$port}?token=".urlencode($token);
+
+        $this->prompt = '';
+        $this->screenshotPath = '';
+        $this->sourceUrl = '';
+        $this->debugContext = '';
+        $this->moduleContext = [];
+        $this->webtermSessionId = $session->id;
+        $this->expandedSessionId = $session->id;
+        $this->launcherOpen = false;
+
+        $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
+    }
+
+    public function launchClaudeWebTermExecute(): void
+    {
+        if (! $this->isWebTermAvailable()) {
+            return;
+        }
+
+        $this->validate([
+            'prompt' => 'required|string|max:10000',
+        ]);
+        $prompt = $this->buildPromptWithScreenshot($this->prompt);
+        $prompt = $this->appendModuleContext($prompt);
+        $prompt = $this->appendDebugContext($prompt);
+
+        $session = OrcaSession::create([
+            'session_type' => OrcaSessionType::Claude,
+            'prompt' => $prompt,
+            'screenshot_path' => $this->screenshotPath ?: null,
+            'source_url' => $this->sourceUrl ?: null,
+            ...$this->resolveSessionContext(),
+            'model' => $this->model,
+            'skip_permissions' => true,
+            'max_turns' => config('orca.claude.max_turns', 50),
+            'allowed_tools' => config('orca.claude.default_allowed_tools', []) ?: null,
+            'working_directory' => base_path(),
+            'status' => OrcaSessionStatus::PoppedOut,
+            'popped_out_at' => now(),
+        ]);
+
+        $token = app(WebTermTokenService::class)->generate($session->id);
+        $host = config('orca.webterm.host', '127.0.0.1');
+        $port = (int) config('orca.webterm.port', 8085);
+        $wsUrl = "ws://{$host}:{$port}?token=".urlencode($token);
+
+        $this->prompt = '';
+        $this->screenshotPath = '';
+        $this->sourceUrl = '';
+        $this->debugContext = '';
+        $this->moduleContext = [];
+        $this->webtermSessionId = $session->id;
+        $this->expandedSessionId = $session->id;
+        $this->launcherOpen = false;
+
+        $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
+    }
+
+    public function resumeSessionInWebTerm(string $id): void
+    {
+        if (! $this->isWebTermAvailable()) {
+            return;
+        }
+
+        $original = OrcaSession::find($id);
+
+        if (! $original || ! $original->isClaude()) {
+            return;
+        }
+
+        if ($original->status->isActive()) {
+            $original->update([
+                'status' => OrcaSessionStatus::Cancelled,
+                'completed_at' => now(),
+            ]);
+        }
+
+        $root = $original;
+        while ($root->parent_id) {
+            $root = OrcaSession::find($root->parent_id) ?? $root;
+            break;
+        }
+
+        $session = OrcaSession::create([
+            'session_type' => OrcaSessionType::Claude,
+            'prompt' => $original->claude_session_id
+                ? 'Continue with the previous task. Permissions have been granted.'
+                : $original->prompt,
+            'resume_session_id' => $original->claude_session_id,
+            'parent_id' => $root->id,
+            'skip_permissions' => true,
+            'max_turns' => $original->max_turns,
+            'allowed_tools' => $original->allowed_tools,
+            'working_directory' => $original->working_directory,
+            'status' => OrcaSessionStatus::PoppedOut,
+            'popped_out_at' => now(),
+        ]);
+
+        $token = app(WebTermTokenService::class)->generate($session->id);
+        $host = config('orca.webterm.host', '127.0.0.1');
+        $port = (int) config('orca.webterm.port', 8085);
+        $wsUrl = "ws://{$host}:{$port}?token=".urlencode($token);
+
+        $this->webtermSessionId = $session->id;
+        $this->expandedSessionId = $session->id;
+
+        $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id);
+    }
+
+    public function isWebTermAvailable(): bool
+    {
+        if (! app()->isLocal()) {
+            return false;
+        }
+
+        if (! config('orca.webterm.enabled', true)) {
+            return false;
+        }
+
+        $host = config('orca.webterm.host', '127.0.0.1');
+        $port = (int) config('orca.webterm.port', 8085);
+
+        $connection = @fsockopen($host, $port, $errno, $errstr, 1);
+
+        if ($connection) {
+            fclose($connection);
+
+            return true;
+        }
+
+        return false;
     }
 
     public function injectText(string $id, string $text): void
@@ -944,13 +1118,21 @@ class Launcher extends MakeDevModuleComponent
             }
         }
 
+        // Determine poll interval: no polling needed when only webterm sessions are active
+        $hasNonWebtermActive = $sessions->contains(
+            fn (OrcaSession $s) => $s->status->isActive() && $s->id !== $this->webtermSessionId
+        );
+        $pollInterval = $hasNonWebtermActive ? '1s' : null;
+
         return view('orca::livewire.launcher', [
             'sessions' => $sessions,
             'expandedSession' => $expandedSession,
             'hasActiveSessions' => $this->getHasActiveSessions(),
             'activeCount' => $this->getActiveCount(),
             'currentToolPhrase' => $currentToolPhrase,
+            'pollInterval' => $pollInterval,
             'canPopOut' => app(PopOutTerminalService::class)->isAvailable(),
+            'canWebTerm' => $this->isWebTermAvailable(),
             'launcherDebugContext' => $this->launcherOpen && $this->sourceUrl ? $this->resolveCurrentPageDebugContext() : null,
             'heartbeatData' => $sessions->mapWithKeys(fn ($s) => [
                 $s->id => $s->last_heartbeat_at?->toIso8601String(),

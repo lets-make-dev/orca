@@ -25,6 +25,24 @@ class AssetController
         );
     }
 
+    public function webtermJs(Request $request): Response
+    {
+        return $this->serveAsset(
+            dirname(__DIR__, 3).'/dist/orca-webterm.js',
+            'application/javascript; charset=utf-8',
+            $request,
+        );
+    }
+
+    public function webtermCss(Request $request): Response
+    {
+        return $this->serveAsset(
+            dirname(__DIR__, 3).'/dist/orca-webterm.css',
+            'text/css; charset=utf-8',
+            $request,
+        );
+    }
+
     /**
      * Serve a static file with caching headers and 304 support.
      */

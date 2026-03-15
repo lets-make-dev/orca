@@ -121,11 +121,19 @@
         },
 
         submitPlan() {
-            $wire.launchClaudeTerminal();
+            @if ($canWebTerm ?? false)
+                $wire.launchClaudeWebTerm();
+            @else
+                $wire.launchClaudeTerminal();
+            @endif
         },
 
         submitExecute() {
-            $wire.launchClaudeTerminalExecute();
+            @if ($canWebTerm ?? false)
+                $wire.launchClaudeWebTermExecute();
+            @else
+                $wire.launchClaudeTerminalExecute();
+            @endif
         },
 
         destroy() {
@@ -326,6 +334,11 @@
                     @include('orca::partials.icon', ['name' => 'bolt', 'variant' => 'mini', 'class' => 'size-3.5'])
                     Execute
                 </button>
+                @if (($canWebTerm ?? false) && ($canPopOut ?? false))
+                    <button type="button" x-on:click="$wire.launchClaudeTerminal()" class="flex items-center justify-center rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 dark:text-zinc-500 dark:hover:bg-zinc-800" title="Open in Terminal.app">
+                        @include('orca::partials.icon', ['name' => 'arrow-top-right-on-square', 'class' => 'size-3.5'])
+                    </button>
+                @endif
             </div>
         </div>
 

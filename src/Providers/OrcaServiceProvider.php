@@ -7,6 +7,7 @@ use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
 use MakeDev\Orca\Console\Commands\ClaudeHook;
 use MakeDev\Orca\Console\Commands\CleanupScreenshots;
+use MakeDev\Orca\Console\Commands\WebTermServer;
 use MakeDev\Orca\Http\Middleware\InjectLauncher;
 use MakeDev\Orca\Livewire\Launcher;
 use Modules\ModuleLoader\Support\ModuleInfoRegistry;
@@ -43,6 +44,7 @@ class OrcaServiceProvider extends ServiceProvider
         $this->commands([
             CleanupScreenshots::class,
             ClaudeHook::class,
+            WebTermServer::class,
         ]);
     }
 

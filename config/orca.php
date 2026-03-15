@@ -20,6 +20,14 @@ return [
         'default_allowed_tools' => [],
     ],
 
+    'webterm' => [
+        'enabled' => env('ORCA_WEBTERM_ENABLED', true),
+        'host' => env('ORCA_WEBTERM_HOST', '127.0.0.1'),
+        'port' => env('ORCA_WEBTERM_PORT', 8085),
+        'token_expiry_minutes' => 60,
+        'max_connections' => 5,
+    ],
+
     'popout' => [
         'enabled' => env('ORCA_POPOUT_ENABLED', true),
         'transcript_max_kb' => 50,
