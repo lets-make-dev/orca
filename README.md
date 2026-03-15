@@ -39,8 +39,13 @@ No JavaScript framework required. Pure PHP and Livewire with real-time streaming
 ```bash
 composer require make-dev/orca
 php artisan migrate
+
+# Run the websocket server for WebTerm sessions (optional, but required for in-browser terminals)
+php artisan orca:webterm
 ```
-That's it. Orca auto-injects into every page in local environments — CSS and JS are served automatically.
+The `orca:webterm` command starts the WebSocket server that powers the in-browser terminal. This needs to be running alongside your queue worker for WebTerm sessions to connect. If you're using [Laravel Herd](https://herd.laravel.com), this is the easiest way to keep it running — just add it to your site's services.
+
+Orca auto-injects into every page in local environments — CSS and JS are served automatically.
 
 ## Features
 
@@ -49,6 +54,8 @@ That's it. Orca auto-injects into every page in local environments — CSS and J
 - **Plan / Execute Workflow** — Launch in Plan mode (read-only, safe by default) then upgrade to Execute mode with full permissions when the plan looks right.
 
 - **Screenshot & Annotate** — Capture the current page, highlight elements, and attach screenshots to your prompts so Claude can see what you see.
+
+- **In-Browser WebTerminal** — Full terminal emulation in the browser via WebSocket. Launch multiple concurrent sessions, drag panels around, minimize to the taskbar — no separate terminal app needed.
 
 - **Pop Out to Terminal** — Seamlessly hand off any session to native macOS Terminal for full interactive use. When you're done, Orca auto-resumes the session back in the browser.
 
@@ -107,9 +114,14 @@ php artisan vendor:publish --tag=orca-views
 # --timeout=0 is critical — Claude sessions can run for minutes
 php artisan queue:work --timeout=0
 
+# Start the WebTerm WebSocket server (required for in-browser terminals)
+php artisan orca:webterm
+
 # Ensure Claude Code CLI is installed
 claude --version
 ```
+
+The WebSocket server needs to be running for in-browser terminal sessions to work. [Laravel Herd](https://herd.laravel.com) is the easiest way to manage this — it can run the server automatically alongside your site.
 
 Orca automatically injects itself into every HTML response via middleware — no Blade changes needed. It only activates in the **local environment** (`app()->isLocal()`), so it will never appear in production.
 
@@ -141,6 +153,14 @@ Configuration can be published to `config/orca.php` and overridden via environme
 | `ORCA_POPOUT_ENABLED` | `true` | Enable the Pop Out to Terminal feature (macOS only) |
 
 > **Screen Recording permission required for live preview:** The pop-out terminal feature shows a live screenshot preview of the Terminal window in the Orca widget. This requires **Terminal.app** to have Screen Recording permission. Grant it in **System Settings → Privacy & Security → Screen & System Audio Recording → Terminal**. Without this permission, screenshots will be blank and the widget will show a fallback "Running in Terminal" indicator instead.
+
+### WebTerminal
+
+| Variable | Default | Description |
+|---|---|---|
+| `ORCA_WEBTERM_ENABLED` | `true` | Enable the in-browser WebTerminal feature |
+| `ORCA_WEBTERM_HOST` | `127.0.0.1` | WebSocket server bind address |
+| `ORCA_WEBTERM_PORT` | `8085` | WebSocket server port |
 
 ### Auto-Login
 

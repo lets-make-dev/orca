@@ -258,6 +258,15 @@
                     <div class="flex items-center gap-1">
                         <button
                             type="button"
+                            x-on:click="copyDebugContext()"
+                            class="rounded p-0.5 text-zinc-400 transition hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+                            title="Copy context"
+                        >
+                            <span x-show="!debugCopied">@include('orca::partials.icon', ['name' => 'clipboard-document', 'class' => 'size-3'])</span>
+                            <span x-show="debugCopied" x-cloak>@include('orca::partials.icon', ['name' => 'check', 'class' => 'size-3 text-green-400'])</span>
+                        </button>
+                        <button
+                            type="button"
                             x-on:click="autoExecute = !autoExecute"
                             class="rounded p-0.5 transition"
                             :class="autoExecute
@@ -265,16 +274,7 @@
                                 : 'text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300'"
                             :title="autoExecute ? 'Auto-execute enabled (skip plan mode)' : 'Click to enable auto-execute'"
                         >
-                            @include('orca::partials.icon', ['name' => 'bolt', 'class' => 'size-3'])
-                        </button>
-                        <button
-                            type="button"
-                            x-on:click="copyDebugContext()"
-                            class="rounded p-0.5 text-zinc-400 transition hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
-                            title="Copy context"
-                        >
-                            <span x-show="!debugCopied">@include('orca::partials.icon', ['name' => 'clipboard-document', 'class' => 'size-3'])</span>
-                            <span x-show="debugCopied" x-cloak>@include('orca::partials.icon', ['name' => 'check', 'class' => 'size-3 text-green-400'])</span>
+                            @include('orca::partials.icon', ['name' => 'bolt', 'variant' => 'mini', 'class' => 'size-3'])
                         </button>
                     </div>
                 </div>
@@ -332,8 +332,8 @@
 
             <div class="flex flex-1 items-center gap-2">
                 <button type="submit" class="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200">
-                    @include('orca::partials.icon', ['name' => 'paper-airplane', 'variant' => 'mini', 'class' => 'size-3.5'])
                     Send
+                    @include('orca::partials.icon', ['name' => 'paper-airplane', 'variant' => 'mini', 'class' => 'size-3.5'])
                 </button>
                 @if ($canPopOut ?? false)
                     <button type="button" x-on:click="$wire.launchClaudeTerminal()" class="flex items-center justify-center rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 dark:text-zinc-500 dark:hover:bg-zinc-800" title="Open in Terminal.app">
