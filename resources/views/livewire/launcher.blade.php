@@ -1,5 +1,6 @@
 <div
     data-orca-launcher
+    wire:ignore.self
     x-data="{
         orcaSurfaced: false,
         confirmExecute: false,
@@ -30,11 +31,11 @@
                 try { window._orcaWtInstances[sessionId].dispose(); } catch(e) {}
             }
             window._orcaWtInstances = window._orcaWtInstances || {};
-            this.webtermStates[sessionId] = { connected: false, exited: false };
+            this.webtermStates = { ...this.webtermStates, [sessionId]: { connected: false, exited: false } };
             if (!this.openWebtermPanels.includes(sessionId)) {
-                this.openWebtermPanels.push(sessionId);
+                this.openWebtermPanels = [...this.openWebtermPanels, sessionId];
             }
-            this.minimizedPanels[sessionId] = false;
+            this.minimizedPanels = { ...this.minimizedPanels, [sessionId]: false };
             this.focusPanel(sessionId);
             const rootEl = this.$el;
             this.$nextTick(() => {
@@ -56,19 +57,19 @@
                 try { window._orcaWtInstances[sessionId].dispose(); } catch(e) {}
                 delete window._orcaWtInstances[sessionId];
             }
-            delete this.webtermStates[sessionId];
-            delete this.minimizedPanels[sessionId];
-            delete this.panelPositions[sessionId];
+            const { [sessionId]: _s, ...restStates } = this.webtermStates;
+            this.webtermStates = restStates;
+            const { [sessionId]: _m, ...restMinimized } = this.minimizedPanels;
+            this.minimizedPanels = restMinimized;
+            const { [sessionId]: _p, ...restPositions } = this.panelPositions;
+            this.panelPositions = restPositions;
             this.openWebtermPanels = this.openWebtermPanels.filter(id => id !== sessionId);
         },
 
         toggleMinimize(sessionId) {
-            if (this.minimizedPanels[sessionId]) {
-                this.minimizedPanels[sessionId] = false;
-                this.focusPanel(sessionId);
-            } else {
-                this.minimizedPanels[sessionId] = true;
-            }
+            const minimized = !this.minimizedPanels[sessionId];
+            this.minimizedPanels = { ...this.minimizedPanels, [sessionId]: minimized };
+            if (!minimized) this.focusPanel(sessionId);
         },
 
         focusPanel(sessionId) {
@@ -122,7 +123,13 @@
     x-on:orca:webterm-connect.window="initWebTerm($event.detail.wsUrl, $event.detail.sessionId)"
     x-on:orca:webterm-disconnect.window="closeWebTerm($event.detail.sessionId)"
     x-on:orca:webterm-toggle.window="toggleMinimize($event.detail.sessionId)"
-    x-on:wt-state="if ($event.detail.connected) { webtermStates[$event.detail.id] = { ...(webtermStates[$event.detail.id] || {}), connected: true }; } if ($event.detail.exited) { webtermStates[$event.detail.id] = { ...(webtermStates[$event.detail.id] || {}), exited: true }; } if ($event.detail.error && !webtermStates[$event.detail.id]?.connected) { webtermStates[$event.detail.id] = { ...(webtermStates[$event.detail.id] || {}), exited: true }; }"
+    x-on:wt-state="
+        const id = $event.detail.id;
+        const cur = webtermStates[id] || {};
+        if ($event.detail.connected) { webtermStates = { ...webtermStates, [id]: { ...cur, connected: true } }; }
+        if ($event.detail.exited) { webtermStates = { ...webtermStates, [id]: { ...cur, exited: true } }; }
+        if ($event.detail.error && !cur.connected) { webtermStates = { ...webtermStates, [id]: { ...cur, exited: true } }; }
+    "
     x-on:orca:panel-kill.window="$wire.kill($event.detail.id)"
     x-on:orca:panel-dismiss.window="closeWebTerm($event.detail.id); $wire.dismiss($event.detail.id)"
 >
