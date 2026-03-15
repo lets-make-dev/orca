@@ -24,6 +24,8 @@ class WebTermConnection
 
     private bool $detached = false;
 
+    private bool $processSpawned = false;
+
     /** @var list<string> Output buffered while no client is connected */
     private array $replayBuffer = [];
 
@@ -45,7 +47,7 @@ class WebTermConnection
 
     public function isRunning(): bool
     {
-        if ($this->terminated || ! is_resource($this->process)) {
+        if (! $this->processSpawned || $this->terminated || ! is_resource($this->process)) {
             return false;
         }
 
@@ -55,9 +57,18 @@ class WebTermConnection
     }
 
     /**
-     * Spawn the Claude CLI process in a PTY.
+     * Send 'connected' to the client so it replies with its actual terminal dimensions.
+     * The process is deferred until the first resize event arrives.
      */
     public function start(): void
+    {
+        $this->sendJson(['type' => 'connected', 'session_id' => $this->session->id]);
+    }
+
+    /**
+     * Spawn the Claude CLI process in a PTY with the correct terminal dimensions.
+     */
+    private function spawnProcess(int $cols, int $rows): void
     {
         $service = new PopOutTerminalService;
         $claudeCmd = $service->buildClaudeCommand($this->session, true);
@@ -76,8 +87,8 @@ class WebTermConnection
 
         $env = array_merge($_ENV, $_SERVER, [
             'TERM' => 'xterm-256color',
-            'COLUMNS' => '120',
-            'LINES' => '30',
+            'COLUMNS' => (string) $cols,
+            'LINES' => (string) $rows,
         ]);
 
         // Remove non-string values that proc_open can't handle
@@ -91,6 +102,8 @@ class WebTermConnection
             return;
         }
 
+        $this->processSpawned = true;
+
         // Make stdout/stderr non-blocking
         stream_set_blocking($this->pipes[1], false);
         stream_set_blocking($this->pipes[2], false);
@@ -100,13 +113,10 @@ class WebTermConnection
             'popped_out_at' => now(),
         ]);
 
-        $this->sendJson(['type' => 'connected', 'session_id' => $this->session->id]);
-
         // Read timer: poll stdout/stderr every 10ms
         $this->readTimer = $this->loop->addPeriodicTimer(0.01, function (): void {
             $this->readOutput();
         });
-
     }
 
     /**
@@ -151,10 +161,18 @@ class WebTermConnection
     }
 
     /**
-     * Send a resize signal via stty.
+     * Handle a resize event from the client.
+     * On the first call, this spawns the process with the correct dimensions.
+     * On subsequent calls, it sends SIGWINCH to notify the process.
      */
     public function resize(int $cols, int $rows): void
     {
+        if (! $this->processSpawned) {
+            $this->spawnProcess($cols, $rows);
+
+            return;
+        }
+
         if (! is_resource($this->process)) {
             return;
         }
@@ -165,9 +183,6 @@ class WebTermConnection
             // Send SIGWINCH to the process group
             $pgid = $status['pid'];
             @exec("kill -WINCH -{$pgid} 2>/dev/null");
-
-            // Also set stty size on the child
-            $this->writeToProcess("\x1b[8;{$rows};{$cols}t");
         }
     }
 
