@@ -981,7 +981,7 @@ class Launcher extends MakeDevModuleComponent
             $parts[] = '## Dependencies'."\n".implode(', ', $this->moduleContext['dependencies']);
         }
 
-        return $prompt."\n\n---\n\n".implode("\n\n", $parts);
+        return implode("\n\n", $parts)."\n\n---\n\n".$prompt;
     }
 
     private function buildScaffoldPrompt(array $sourceModule, string $newModuleName, string $newModuleDescription): string
@@ -1029,9 +1029,7 @@ class Launcher extends MakeDevModuleComponent
         $parts[] = "## Views\n{$debug['views']}";
         $parts[] = "## Auth User\n{$debug['authUser']}";
 
-        $prompt .= "\n\n---\n\n".implode("\n\n", $parts);
-
-        return $prompt;
+        return implode("\n\n", $parts)."\n\n---\n\n".$prompt;
     }
 
     /**

@@ -755,13 +755,6 @@
                         >
                             @include('orca::partials.icon', ['name' => 'stop', 'class' => 'size-3.5'])
                         </button>
-                        <button
-                            x-on:click="toggleMinimize(panelId)"
-                            class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-white"
-                            title="Minimize"
-                        >
-                            @include('orca::partials.icon', ['name' => 'x-mark', 'class' => 'size-3.5'])
-                        </button>
                     </div>
                 </div>
 
