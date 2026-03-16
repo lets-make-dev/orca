@@ -110,7 +110,9 @@ class WebTermConnection
         $workingDir = $this->session->working_directory ?: base_path();
 
         // If the tmux session already exists (started by pop-out), just attach to it
-        if (! $tmux->sessionExists($sessionId)) {
+        $existingSession = $tmux->sessionExists($sessionId);
+
+        if (! $existingSession) {
             $service = new PopOutTerminalService;
             $claudeCmd = $service->buildClaudeCommand($this->session, true);
 
@@ -175,6 +177,23 @@ class WebTermConnection
             'popped_out_at' => now(),
             'tmux_session_name' => $tmuxName,
         ]);
+
+        // Force the script PTY size then resize the tmux window after the
+        // attach client connects — otherwise tmux auto-sizes to the script
+        // PTY's default dimensions (80x24)
+        $this->loop->addTimer(0.3, function () use ($tmux, $sessionId, $cols, $rows): void {
+            if (! is_resource($this->process)) {
+                return;
+            }
+
+            $status = proc_get_status($this->process);
+
+            if ($status['running'] && $status['pid']) {
+                $this->setTtySize($status['pid'], $cols, $rows);
+            }
+
+            $tmux->resize($sessionId, $cols, $rows);
+        });
 
         $this->readTimer = $this->loop->addPeriodicTimer(0.01, function (): void {
             $this->readOutput();

@@ -136,6 +136,7 @@ class PopOutTerminalService
         $scriptPath = sys_get_temp_dir().'/orca_popout_'.$sessionId.'.sh';
         $script = <<<BASH
 #!/bin/bash
+clear
 # Save our Terminal window ID so we close the right window
 WINDOW_ID=\$(osascript -e 'tell application "Terminal" to get id of front window' 2>/dev/null)
 
