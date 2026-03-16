@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Session;
-use MakeDev\MakeDev\Livewire\MakeDevModuleComponent;
+use Livewire\Component;
 use MakeDev\Orca\Enums\OrcaSessionStatus;
 use MakeDev\Orca\Enums\OrcaSessionType;
 use MakeDev\Orca\Jobs\RunClaudeSession;
@@ -22,7 +22,7 @@ use MakeDev\Orca\Services\SessionChannel;
 use MakeDev\Orca\Services\TmuxService;
 use MakeDev\Orca\WebTerm\WebTermTokenService;
 
-class Launcher extends MakeDevModuleComponent
+class Launcher extends Component
 {
     public string $command = '';
 

@@ -146,9 +146,6 @@
     @if ($sessions->isEmpty() && ! $launcherOpen)
         {{-- Empty state: floating "+" button --}}
         <div class="pointer-events-auto fixed right-4 bottom-4 z-50 flex items-center gap-1.5">
-            <x-makedev::skills-container popover-position="above">
-            </x-makedev::skills-container>
-
             <button
                 x-on:click="$wire.toggleLauncher(window.location.href)"
                 class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900 text-white shadow-lg transition hover:bg-zinc-700"
