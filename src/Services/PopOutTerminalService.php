@@ -11,9 +11,16 @@ class PopOutTerminalService
 {
     public function isAvailable(): bool
     {
-        return app()->isLocal()
-            && PHP_OS_FAMILY === 'Darwin'
-            && config('orca.popout.enabled', true);
+        if (! app()->isLocal() || ! config('orca.popout.enabled', true)) {
+            return false;
+        }
+
+        // tmux makes pop-out cross-platform
+        if (app(TmuxService::class)->isAvailable()) {
+            return true;
+        }
+
+        return PHP_OS_FAMILY === 'Darwin';
     }
 
     public function binaryPath(): ?string
@@ -54,6 +61,14 @@ class PopOutTerminalService
 
     public function popOut(OrcaSession $session, string $baseUrl): void
     {
+        $tmux = app(TmuxService::class);
+
+        if ($tmux->isAvailable()) {
+            $this->popOutViaTmux($session, $baseUrl, $tmux);
+
+            return;
+        }
+
         $callbackUrl = $baseUrl.'/orca/popout/return';
 
         $script = $this->buildWrapperScript($session, $callbackUrl);
@@ -69,6 +84,76 @@ class PopOutTerminalService
         ]);
 
         exec('open -a Terminal '.escapeshellarg($scriptPath));
+    }
+
+    private function popOutViaTmux(OrcaSession $session, string $baseUrl, TmuxService $tmux): void
+    {
+        $callbackUrl = $baseUrl.'/orca/popout/return';
+        $sessionId = $session->id;
+        $tmuxName = $tmux->sessionName($sessionId);
+
+        // If tmux session doesn't exist yet, create it
+        if (! $tmux->sessionExists($sessionId)) {
+            $claudeCmd = $this->buildClaudeCommand($session, true);
+
+            if ($session->prompt && ! $session->resume_session_id && ! $session->claude_session_id) {
+                $claudeCmd .= ' '.escapeshellarg($session->prompt);
+            }
+
+            $workingDir = $session->working_directory ?: base_path();
+
+            // Wrap Claude command with callback on exit
+            $wrappedCmd = sprintf(
+                'bash -c %s',
+                escapeshellarg(sprintf(
+                    'export ORCA_SESSION_ID=%s; export ORCA_BASE_PATH=%s; %s; EXIT_CODE=$?; curl -s -X POST %s -H "Content-Type: application/json" -d %s > /dev/null 2>&1; exit $EXIT_CODE',
+                    escapeshellarg($sessionId),
+                    escapeshellarg(base_path()),
+                    $claudeCmd,
+                    escapeshellarg($callbackUrl),
+                    escapeshellarg('{"session_id":"'.$sessionId.'","exit_code":"$EXIT_CODE","transcript_path":""}'),
+                )),
+            );
+
+            $tmux->createSession($sessionId, $wrappedCmd, $workingDir, 120, 30, [
+                'ORCA_SESSION_ID' => $sessionId,
+                'ORCA_BASE_PATH' => base_path(),
+            ]);
+        }
+
+        $session->update([
+            'status' => OrcaSessionStatus::PoppedOut,
+            'popped_out_at' => now(),
+            'tmux_session_name' => $tmuxName,
+        ]);
+
+        // Build a script that attaches to the tmux session
+        $attachCmd = $tmux->attachCommand($sessionId);
+        $scriptPath = sys_get_temp_dir().'/orca_popout_'.$sessionId.'.sh';
+        $script = "#!/bin/bash\nexec {$attachCmd}\n";
+
+        file_put_contents($scriptPath, $script);
+        chmod($scriptPath, 0755);
+
+        $this->openNativeTerminal($scriptPath);
+    }
+
+    private function openNativeTerminal(string $scriptPath): void
+    {
+        if (PHP_OS_FAMILY === 'Darwin') {
+            exec('open -a Terminal '.escapeshellarg($scriptPath));
+        } else {
+            // Linux: try common terminal emulators
+            $terminals = ['x-terminal-emulator', 'gnome-terminal', 'xterm'];
+            foreach ($terminals as $terminal) {
+                $which = trim(exec("which {$terminal} 2>/dev/null") ?? '');
+                if ($which) {
+                    exec("{$terminal} -e ".escapeshellarg($scriptPath).' &');
+
+                    return;
+                }
+            }
+        }
     }
 
     public function buildWrapperScript(OrcaSession $session, string $callbackUrl): string
@@ -333,6 +418,13 @@ BASH;
 
     public function terminateTerminal(OrcaSession $session): void
     {
+        // Kill tmux session if one exists
+        if ($session->tmux_session_name) {
+            app(TmuxService::class)->killSession($session->id);
+
+            return;
+        }
+
         $pid = trim(shell_exec('pgrep -f '.escapeshellarg('orca-terminal.*--session-id '.$session->id)) ?? '');
 
         if ($pid && is_numeric($pid)) {

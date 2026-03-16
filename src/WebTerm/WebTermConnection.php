@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use MakeDev\Orca\Enums\OrcaSessionStatus;
 use MakeDev\Orca\Models\OrcaSession;
 use MakeDev\Orca\Services\PopOutTerminalService;
+use MakeDev\Orca\Services\TmuxService;
 use React\EventLoop\LoopInterface;
 use React\EventLoop\TimerInterface;
 
@@ -25,6 +26,8 @@ class WebTermConnection
     private bool $detached = false;
 
     private bool $processSpawned = false;
+
+    private bool $usingTmux = false;
 
     private ?string $childTtyPath = null;
 
@@ -49,13 +52,27 @@ class WebTermConnection
 
     public function isRunning(): bool
     {
-        if (! $this->processSpawned || $this->terminated || ! is_resource($this->process)) {
+        if (! $this->processSpawned || $this->terminated) {
+            return false;
+        }
+
+        // When using tmux, the session may still be alive even if the attach process is dead
+        if ($this->usingTmux) {
+            return app(TmuxService::class)->sessionExists($this->session->id);
+        }
+
+        if (! is_resource($this->process)) {
             return false;
         }
 
         $status = proc_get_status($this->process);
 
         return $status['running'];
+    }
+
+    public function isUsingTmux(): bool
+    {
+        return $this->usingTmux;
     }
 
     /**
@@ -72,26 +89,60 @@ class WebTermConnection
      */
     private function spawnProcess(int $cols, int $rows): void
     {
-        $service = new PopOutTerminalService;
-        $claudeCmd = $service->buildClaudeCommand($this->session, true);
+        $tmux = app(TmuxService::class);
 
-        // Pass the prompt as a positional argument so Claude starts an interactive
-        // session with the prompt already submitted (unlike -p which exits after).
-        if ($this->session->prompt && ! $this->session->resume_session_id && ! $this->session->claude_session_id) {
-            $claudeCmd .= ' '.escapeshellarg($this->session->prompt);
+        if ($tmux->isAvailable()) {
+            $this->spawnViaTmux($tmux, $cols, $rows);
+
+            return;
         }
 
+        $this->spawnViaScript($cols, $rows);
+    }
+
+    /**
+     * Spawn via tmux: create a tmux session with Claude, then attach to it.
+     * If a tmux session already exists (e.g. from a pop-out), just attach.
+     */
+    private function spawnViaTmux(TmuxService $tmux, int $cols, int $rows): void
+    {
+        $sessionId = $this->session->id;
         $workingDir = $this->session->working_directory ?: base_path();
 
-        // Use script to allocate a PTY on macOS/Linux
+        // If the tmux session already exists (started by pop-out), just attach to it
+        if (! $tmux->sessionExists($sessionId)) {
+            $service = new PopOutTerminalService;
+            $claudeCmd = $service->buildClaudeCommand($this->session, true);
+
+            if ($this->session->prompt && ! $this->session->resume_session_id && ! $this->session->claude_session_id) {
+                $claudeCmd .= ' '.escapeshellarg($this->session->prompt);
+            }
+
+            $created = $tmux->createSession($sessionId, $claudeCmd, $workingDir, $cols, $rows, [
+                'ORCA_SESSION_ID' => $sessionId,
+                'ORCA_BASE_PATH' => base_path(),
+                'TERM' => 'xterm-256color',
+            ]);
+
+            if (! $created) {
+                $this->sendError('Failed to create tmux session');
+
+                return;
+            }
+        }
+
+        $this->usingTmux = true;
+
+        // Spawn a tmux attach process as our I/O pipe, wrapped in script for PTY
+        $attachCmd = $tmux->attachCommand($sessionId);
         $command = PHP_OS_FAMILY === 'Darwin'
-            ? "script -q /dev/null {$claudeCmd}"
-            : "script -qc {$claudeCmd} /dev/null";
+            ? "script -q /dev/null {$attachCmd}"
+            : "script -qc {$attachCmd} /dev/null";
 
         $descriptors = [
-            0 => ['pipe', 'r'], // stdin
-            1 => ['pipe', 'w'], // stdout
-            2 => ['pipe', 'w'], // stderr
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
         ];
 
         $env = array_merge($_ENV, $_SERVER, [
@@ -99,8 +150,64 @@ class WebTermConnection
             'COLUMNS' => (string) $cols,
             'LINES' => (string) $rows,
         ]);
+        $env = array_filter($env, fn ($v) => is_string($v));
 
-        // Remove non-string values that proc_open can't handle
+        $this->process = proc_open($command, $descriptors, $this->pipes, $workingDir, $env);
+
+        if (! is_resource($this->process)) {
+            $tmux->killSession($sessionId);
+            $this->sendError('Failed to attach to tmux session');
+
+            return;
+        }
+
+        $this->processSpawned = true;
+
+        stream_set_blocking($this->pipes[1], false);
+        stream_set_blocking($this->pipes[2], false);
+
+        $tmuxName = $tmux->sessionName($sessionId);
+
+        $this->session->update([
+            'status' => OrcaSessionStatus::PoppedOut,
+            'popped_out_at' => now(),
+            'tmux_session_name' => $tmuxName,
+        ]);
+
+        $this->readTimer = $this->loop->addPeriodicTimer(0.01, function (): void {
+            $this->readOutput();
+        });
+    }
+
+    /**
+     * Spawn via script (original PTY allocation approach).
+     */
+    private function spawnViaScript(int $cols, int $rows): void
+    {
+        $service = new PopOutTerminalService;
+        $claudeCmd = $service->buildClaudeCommand($this->session, true);
+
+        if ($this->session->prompt && ! $this->session->resume_session_id && ! $this->session->claude_session_id) {
+            $claudeCmd .= ' '.escapeshellarg($this->session->prompt);
+        }
+
+        $workingDir = $this->session->working_directory ?: base_path();
+
+        $command = PHP_OS_FAMILY === 'Darwin'
+            ? "script -q /dev/null {$claudeCmd}"
+            : "script -qc {$claudeCmd} /dev/null";
+
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $env = array_merge($_ENV, $_SERVER, [
+            'TERM' => 'xterm-256color',
+            'COLUMNS' => (string) $cols,
+            'LINES' => (string) $rows,
+        ]);
         $env = array_filter($env, fn ($v) => is_string($v));
 
         $this->process = proc_open($command, $descriptors, $this->pipes, $workingDir, $env);
@@ -113,7 +220,6 @@ class WebTermConnection
 
         $this->processSpawned = true;
 
-        // Make stdout/stderr non-blocking
         stream_set_blocking($this->pipes[1], false);
         stream_set_blocking($this->pipes[2], false);
 
@@ -122,8 +228,7 @@ class WebTermConnection
             'popped_out_at' => now(),
         ]);
 
-        // Force the PTY size after a short delay. macOS `script` ignores COLUMNS/LINES
-        // env vars when its stdin is a pipe, so the PTY starts at a wrong default size.
+        // Force the PTY size after a short delay
         $this->loop->addTimer(0.3, function () use ($cols, $rows): void {
             if (! is_resource($this->process)) {
                 return;
@@ -137,7 +242,6 @@ class WebTermConnection
             }
         });
 
-        // Read timer: poll stdout/stderr every 10ms
         $this->readTimer = $this->loop->addPeriodicTimer(0.01, function (): void {
             $this->readOutput();
         });
@@ -146,15 +250,22 @@ class WebTermConnection
     /**
      * Detach the WebSocket client without killing the process.
      * Output is buffered so it can be replayed on reconnect.
+     * When using tmux, the tmux session stays alive and no replay buffer is needed.
      */
     public function detach(): void
     {
         $this->send = null;
         $this->detached = true;
+
+        if ($this->usingTmux) {
+            // Kill the attach process — tmux session stays alive
+            $this->killAttachProcess();
+        }
     }
 
     /**
      * Reattach a new WebSocket client, replaying buffered output.
+     * When using tmux, spawn a fresh attach process — tmux replays scrollback automatically.
      *
      * @param  Closure(string): void  $send
      */
@@ -163,15 +274,97 @@ class WebTermConnection
         $this->send = $send;
         $this->detached = false;
 
-        // Send current status
         $this->sendJson(['type' => 'connected', 'session_id' => $this->session->id]);
 
-        // Replay buffered output
+        if ($this->usingTmux) {
+            // Spawn a fresh tmux attach process
+            $this->reattachTmux();
+
+            return;
+        }
+
+        // Replay buffered output for non-tmux sessions
         foreach ($this->replayBuffer as $chunk) {
             $this->sendJson(['type' => 'output', 'data' => $chunk]);
         }
 
         $this->replayBuffer = [];
+    }
+
+    /**
+     * Spawn a fresh tmux attach process for reattachment.
+     */
+    private function reattachTmux(): void
+    {
+        $tmux = app(TmuxService::class);
+        $sessionId = $this->session->id;
+
+        if (! $tmux->sessionExists($sessionId)) {
+            $this->sendJson(['type' => 'exit', 'code' => 0]);
+
+            return;
+        }
+
+        $attachCmd = $tmux->attachCommand($sessionId);
+        $command = PHP_OS_FAMILY === 'Darwin'
+            ? "script -q /dev/null {$attachCmd}"
+            : "script -qc {$attachCmd} /dev/null";
+
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $env = array_filter(array_merge($_ENV, $_SERVER, [
+            'TERM' => 'xterm-256color',
+        ]), fn ($v) => is_string($v));
+
+        $workingDir = $this->session->working_directory ?: base_path();
+        $this->process = proc_open($command, $descriptors, $this->pipes, $workingDir, $env);
+
+        if (! is_resource($this->process)) {
+            $this->sendError('Failed to reattach to tmux session');
+
+            return;
+        }
+
+        stream_set_blocking($this->pipes[1], false);
+        stream_set_blocking($this->pipes[2], false);
+
+        if (! $this->readTimer) {
+            $this->readTimer = $this->loop->addPeriodicTimer(0.01, function (): void {
+                $this->readOutput();
+            });
+        }
+    }
+
+    /**
+     * Kill the tmux attach process without affecting the tmux session.
+     */
+    private function killAttachProcess(): void
+    {
+        if ($this->readTimer) {
+            $this->loop->cancelTimer($this->readTimer);
+            $this->readTimer = null;
+        }
+
+        foreach ($this->pipes as $pipe) {
+            if (is_resource($pipe)) {
+                @fclose($pipe);
+            }
+        }
+        $this->pipes = [];
+
+        if (is_resource($this->process)) {
+            $status = proc_get_status($this->process);
+            if ($status['running'] && $status['pid']) {
+                @posix_kill($status['pid'], 15);
+            }
+            @proc_close($this->process);
+        }
+
+        $this->process = null;
     }
 
     /**
@@ -187,12 +380,18 @@ class WebTermConnection
     /**
      * Handle a resize event from the client.
      * On the first call, this spawns the process with the correct dimensions.
-     * On subsequent calls, it updates the PTY size via stty and sends SIGWINCH.
+     * On subsequent calls, it updates the PTY size via stty/tmux and sends SIGWINCH.
      */
     public function resize(int $cols, int $rows): void
     {
         if (! $this->processSpawned) {
             $this->spawnProcess($cols, $rows);
+
+            return;
+        }
+
+        if ($this->usingTmux) {
+            app(TmuxService::class)->resize($this->session->id, $cols, $rows);
 
             return;
         }
@@ -206,10 +405,8 @@ class WebTermConnection
         if ($status['running'] && $status['pid']) {
             $pgid = $status['pid'];
 
-            // Update the PTY dimensions so ioctl(TIOCGWINSZ) returns the new size
             $this->setTtySize($pgid, $cols, $rows);
 
-            // Send SIGWINCH to notify the process group of the size change
             @exec("kill -WINCH -{$pgid} 2>/dev/null");
         }
     }
@@ -296,6 +493,11 @@ class WebTermConnection
             @proc_close($this->process);
         }
 
+        // Also kill the tmux session if we were using one
+        if ($this->usingTmux) {
+            app(TmuxService::class)->killSession($this->session->id);
+        }
+
         // Update session status if still active (session may have been deleted)
         try {
             $this->session->refresh();
@@ -345,42 +547,85 @@ class WebTermConnection
         }
 
         // Check if process has exited
-        if (is_resource($this->process)) {
+        if ($this->usingTmux) {
+            $this->checkTmuxProcessExit();
+        } elseif (is_resource($this->process)) {
             $status = proc_get_status($this->process);
 
             if (! $status['running']) {
-                // Read any remaining output
-                $remaining = '';
+                $this->handleProcessExit($status['exitcode']);
+            }
+        }
+    }
 
-                if (isset($this->pipes[1]) && is_resource($this->pipes[1])) {
-                    $remaining .= stream_get_contents($this->pipes[1]) ?: '';
-                }
+    /**
+     * Check if the Claude process inside tmux has exited.
+     */
+    private function checkTmuxProcessExit(): void
+    {
+        $tmux = app(TmuxService::class);
+        $sessionId = $this->session->id;
 
-                if ($remaining !== '') {
-                    if ($this->detached) {
-                        $this->bufferOutput($remaining);
-                    } else {
-                        $this->sendJson(['type' => 'output', 'data' => $remaining]);
-                    }
-                }
+        if (! $tmux->hasProcessExited($sessionId)) {
+            return;
+        }
 
-                $exitCode = $status['exitcode'];
+        // Read any remaining output from the attach process
+        $this->drainRemainingOutput();
 
-                if (! $this->detached) {
-                    $this->sendJson(['type' => 'exit', 'code' => $exitCode]);
-                }
+        $exitCode = $tmux->getExitCode($sessionId) ?? 0;
 
-                try {
-                    $this->session->update([
-                        'status' => $exitCode === 0 ? OrcaSessionStatus::Completed : OrcaSessionStatus::Failed,
-                        'exit_code' => $exitCode,
-                        'completed_at' => now(),
-                    ]);
-                } catch (ModelNotFoundException) {
-                    // Session was deleted
-                }
+        if (! $this->detached) {
+            $this->sendJson(['type' => 'exit', 'code' => $exitCode]);
+        }
 
-                $this->terminate();
+        try {
+            $this->session->update([
+                'status' => $exitCode === 0 ? OrcaSessionStatus::Completed : OrcaSessionStatus::Failed,
+                'exit_code' => $exitCode,
+                'completed_at' => now(),
+            ]);
+        } catch (ModelNotFoundException) {
+            // Session was deleted
+        }
+
+        $this->terminate();
+    }
+
+    private function handleProcessExit(int $exitCode): void
+    {
+        $this->drainRemainingOutput();
+
+        if (! $this->detached) {
+            $this->sendJson(['type' => 'exit', 'code' => $exitCode]);
+        }
+
+        try {
+            $this->session->update([
+                'status' => $exitCode === 0 ? OrcaSessionStatus::Completed : OrcaSessionStatus::Failed,
+                'exit_code' => $exitCode,
+                'completed_at' => now(),
+            ]);
+        } catch (ModelNotFoundException) {
+            // Session was deleted
+        }
+
+        $this->terminate();
+    }
+
+    private function drainRemainingOutput(): void
+    {
+        $remaining = '';
+
+        if (isset($this->pipes[1]) && is_resource($this->pipes[1])) {
+            $remaining .= stream_get_contents($this->pipes[1]) ?: '';
+        }
+
+        if ($remaining !== '') {
+            if ($this->detached) {
+                $this->bufferOutput($remaining);
+            } else {
+                $this->sendJson(['type' => 'output', 'data' => $remaining]);
             }
         }
     }

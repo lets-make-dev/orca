@@ -49,6 +49,7 @@ class OrcaSession extends Model
         'popped_out_at',
         'popout_transcript',
         'popout_script_path',
+        'tmux_session_name',
     ];
 
     /**

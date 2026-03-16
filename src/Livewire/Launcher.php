@@ -18,6 +18,7 @@ use MakeDev\Orca\Services\ClaudeEventParser;
 use MakeDev\Orca\Services\PopOutTerminalService;
 use MakeDev\Orca\Services\RouteResolver;
 use MakeDev\Orca\Services\SessionChannel;
+use MakeDev\Orca\Services\TmuxService;
 use MakeDev\Orca\WebTerm\WebTermTokenService;
 
 class Launcher extends MakeDevModuleComponent
@@ -498,6 +499,15 @@ class Launcher extends MakeDevModuleComponent
             return;
         }
 
+        // When tmux is in use and the session already has a tmux session (e.g. from WebTerm),
+        // just open a native terminal attached to the same tmux session — both see it live.
+        $tmux = app(TmuxService::class);
+        if ($tmux->isAvailable() && $session->tmux_session_name && $tmux->sessionExists($session->id)) {
+            $service->popOut($session, request()->getSchemeAndHttpHost());
+
+            return;
+        }
+
         // Cancel actively managed sessions so RunClaudeSession terminates the process
         if (in_array($session->status, [OrcaSessionStatus::Running, OrcaSessionStatus::AwaitingInput])) {
             $session->update([
@@ -773,6 +783,35 @@ class Launcher extends MakeDevModuleComponent
         }
 
         return false;
+    }
+
+    public function popIntoWebTerm(string $id): void
+    {
+        if (! $this->isWebTermAvailable()) {
+            return;
+        }
+
+        $session = OrcaSession::find($id);
+
+        if (! $session || ! $session->isClaude() || ! $session->tmux_session_name) {
+            return;
+        }
+
+        $tmux = app(TmuxService::class);
+
+        if (! $tmux->isAvailable() || ! $tmux->sessionExists($session->id)) {
+            return;
+        }
+
+        $token = app(WebTermTokenService::class)->generate($session->id);
+        $host = config('orca.webterm.host', '127.0.0.1');
+        $port = (int) config('orca.webterm.port', 8085);
+        $wsUrl = "ws://{$host}:{$port}?token=".urlencode($token);
+
+        $this->webtermSessionIds[] = $session->id;
+        $this->expandedSessionId = '';
+
+        $this->dispatch('orca:webterm-connect', wsUrl: $wsUrl, sessionId: $session->id, command: $this->buildDisplayCommand($session));
     }
 
     public function injectText(string $id, string $text): void
@@ -1224,6 +1263,7 @@ class Launcher extends MakeDevModuleComponent
             'currentToolPhrase' => $currentToolPhrase,
             'pollInterval' => $pollInterval,
             'canPopOut' => app(PopOutTerminalService::class)->isAvailable(),
+            'tmuxAvailable' => app(TmuxService::class)->isAvailable(),
             'launcherDebugContext' => $this->launcherOpen && $this->sourceUrl ? $this->resolveCurrentPageDebugContext() : null,
             'heartbeatData' => $sessions->mapWithKeys(fn ($s) => [
                 $s->id => $s->last_heartbeat_at?->toIso8601String(),

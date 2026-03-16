@@ -28,6 +28,11 @@ return [
         'max_connections' => 5,
     ],
 
+    'tmux' => [
+        'enabled' => env('ORCA_TMUX_ENABLED', true),
+        'binary' => env('ORCA_TMUX_BINARY', 'tmux'),
+    ],
+
     'popout' => [
         'enabled' => env('ORCA_POPOUT_ENABLED', true),
         'transcript_max_kb' => 50,

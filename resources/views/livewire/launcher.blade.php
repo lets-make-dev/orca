@@ -138,6 +138,7 @@
         if ($event.detail.error && !cur.connected) { webtermStates = { ...webtermStates, [id]: { ...cur, exited: true } }; }
     "
     x-on:orca:panel-kill.window="$wire.kill($event.detail.id)"
+    x-on:orca:panel-popout.window="$wire.popOutSession($event.detail.id)"
     x-on:orca:panel-dismiss.window="closeWebTerm($event.detail.id); $wire.dismiss($event.detail.id)"
 >
     @if ($sessions->isEmpty() && ! $launcherOpen)
@@ -197,7 +198,7 @@
                             @if ($expandedSession->isClaude())
                                 @include('orca::livewire.partials.debug-info', ['session' => $expandedSession])
                             @endif
-                            @if ($canPopOut && $expandedSession->isClaude() && $expandedSession->status->isActive() && $expandedSession->status !== \MakeDev\Orca\Enums\OrcaSessionStatus::PoppedOut)
+                            @if ($canPopOut && $expandedSession->isClaude() && $expandedSession->status->isActive() && ($expandedSession->status !== \MakeDev\Orca\Enums\OrcaSessionStatus::PoppedOut || ($tmuxAvailable && $expandedSession->tmux_session_name)))
                                 <button wire:click="popOutSession('{{ $expandedSession->id }}')" class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-cyan-400" title="Open in Terminal">
                                     @include('orca::partials.icon', ['name' => 'arrow-top-right-on-square', 'class' => 'size-3.5'])
                                 </button>
@@ -295,12 +296,22 @@
                                         Resume in Terminal
                                     </button>
                                 @else
-                                    <button
-                                        wire:click="focusTerminal('{{ $expandedSession->id }}')"
-                                        class="mt-1 text-xs text-zinc-500 transition hover:text-cyan-400"
-                                    >
-                                        Focus Terminal
-                                    </button>
+                                    <div class="mt-1 flex items-center gap-3">
+                                        <button
+                                            wire:click="focusTerminal('{{ $expandedSession->id }}')"
+                                            class="text-xs text-zinc-500 transition hover:text-cyan-400"
+                                        >
+                                            Focus Terminal
+                                        </button>
+                                        @if ($tmuxAvailable && $expandedSession->tmux_session_name)
+                                            <button
+                                                wire:click="popIntoWebTerm('{{ $expandedSession->id }}')"
+                                                class="text-xs text-zinc-500 transition hover:text-cyan-400"
+                                            >
+                                                Open in Browser
+                                            </button>
+                                        @endif
+                                    </div>
                                 @endif
                             </div>
                     @elseif ($expandedSession->isClaude())
@@ -741,6 +752,15 @@
                         <span class="truncate text-xs font-medium text-white" x-text="'Session ' + panelId.substring(0, 8)"></span>
                     </div>
                     <div class="ml-2 flex flex-shrink-0 items-center gap-1">
+                        @if ($tmuxAvailable)
+                            <button
+                                x-on:click="window.dispatchEvent(new CustomEvent('orca:panel-popout', { detail: { id: panelId } }))"
+                                class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-cyan-400"
+                                title="Open in Terminal"
+                            >
+                                @include('orca::partials.icon', ['name' => 'arrow-top-right-on-square', 'class' => 'size-3.5'])
+                            </button>
+                        @endif
                         <button
                             x-on:click="toggleMinimize(panelId)"
                             class="rounded p-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-white"

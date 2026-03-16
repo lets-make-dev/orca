@@ -5,6 +5,7 @@ namespace MakeDev\Orca\WebTerm;
 use GuzzleHttp\Psr7\HttpFactory;
 use GuzzleHttp\Psr7\Message;
 use MakeDev\Orca\Models\OrcaSession;
+use MakeDev\Orca\Services\TmuxService;
 use Ratchet\RFC6455\Handshake\RequestVerifier;
 use Ratchet\RFC6455\Handshake\ServerNegotiator;
 use Ratchet\RFC6455\Messaging\CloseFrameChecker;
@@ -212,6 +213,11 @@ class WebTermApplication
         $webTermConn = $this->sessions[$sessionId] ?? null;
 
         if ($webTermConn) {
+            // If using tmux, also kill the tmux session
+            if ($webTermConn->isUsingTmux()) {
+                app(TmuxService::class)->killSession($sessionId);
+            }
+
             $webTermConn->terminate();
             unset($this->sessions[$sessionId]);
         }
