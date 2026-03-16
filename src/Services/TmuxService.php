@@ -142,6 +142,20 @@ class TmuxService
         ));
     }
 
+    public function setStatusBar(string $sessionId, bool $visible): void
+    {
+        $name = $this->sessionName($sessionId);
+        $binary = $this->binary();
+        $value = $visible ? 'on' : 'off';
+
+        exec(sprintf(
+            '%s set-option -t %s status %s 2>/dev/null',
+            $binary,
+            escapeshellarg($name),
+            $value,
+        ));
+    }
+
     public function attachCommand(string $sessionId): string
     {
         $name = $this->sessionName($sessionId);

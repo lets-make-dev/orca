@@ -193,6 +193,7 @@ class WebTermConnection
             }
 
             $tmux->resize($sessionId, $cols, $rows);
+            $tmux->setStatusBar($sessionId, false);
         });
 
         $this->readTimer = $this->loop->addPeriodicTimer(0.01, function (): void {
@@ -412,6 +413,16 @@ class WebTermConnection
         }
 
         if ($this->usingTmux) {
+            // Resize the script PTY first so tmux's client auto-sizing
+            // doesn't override the explicit resize-window command
+            if (is_resource($this->process)) {
+                $status = proc_get_status($this->process);
+
+                if ($status['running'] && $status['pid']) {
+                    $this->setTtySize($status['pid'], $cols, $rows);
+                }
+            }
+
             app(TmuxService::class)->resize($this->session->id, $cols, $rows);
 
             return;

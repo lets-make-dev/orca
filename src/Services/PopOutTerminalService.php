@@ -124,6 +124,7 @@ class PopOutTerminalService
 
         // Always refresh the pop-in binding in case code has changed since the session was created
         $tmux->configurePopIn($sessionId, $baseUrl);
+        $tmux->setStatusBar($sessionId, true);
 
         $session->update([
             'status' => OrcaSessionStatus::PoppedOut,
