@@ -5,6 +5,7 @@ namespace MakeDev\Orca\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Cache;
 use MakeDev\Orca\Enums\OrcaSessionStatus;
 use MakeDev\Orca\Models\OrcaSession;
 use MakeDev\Orca\Services\PopOutTerminalService;
@@ -30,6 +31,28 @@ class PopOutController extends Controller
             (int) $request->input('exit_code'),
             $request->input('transcript_path'),
         );
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    public function popIn(Request $request): JsonResponse
+    {
+        if (! app()->isLocal()) {
+            abort(403);
+        }
+
+        $request->validate([
+            'session_id' => 'required|string',
+        ]);
+
+        $sessionId = $request->input('session_id');
+        $session = OrcaSession::findOrFail($sessionId);
+
+        if (! $session->tmux_session_name) {
+            return response()->json(['status' => 'error', 'message' => 'Not a tmux session'], 422);
+        }
+
+        Cache::put("orca:pop-in:{$sessionId}", true, 30);
 
         return response()->json(['status' => 'ok']);
     }

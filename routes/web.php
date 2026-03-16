@@ -23,6 +23,10 @@ Route::post('orca/popout/heartbeat', [PopOutController::class, 'heartbeat'])
 Route::get('orca/terminal-screenshot/{session}', [TerminalScreenshotController::class, 'show'])
     ->name('orca.terminal-screenshot');
 
+Route::post('orca/pop-in', [PopOutController::class, 'popIn'])
+    ->withoutMiddleware(VerifyCsrfToken::class)
+    ->name('orca.pop-in');
+
 Route::get('orca/auto-login', AutoLoginController::class)
     ->middleware(ValidateSignature::class)
     ->name('orca.auto-login');

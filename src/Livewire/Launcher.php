@@ -5,6 +5,7 @@ namespace MakeDev\Orca\Livewire;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Session;
@@ -505,6 +506,10 @@ class Launcher extends MakeDevModuleComponent
         if ($tmux->isAvailable() && $session->tmux_session_name && $tmux->sessionExists($session->id)) {
             $service->popOut($session, request()->getSchemeAndHttpHost());
 
+            if (in_array($id, $this->webtermSessionIds)) {
+                $this->dispatch('orca:webterm-minimize', sessionId: $id);
+            }
+
             return;
         }
 
@@ -517,6 +522,10 @@ class Launcher extends MakeDevModuleComponent
         }
 
         $service->popOut($session, request()->getSchemeAndHttpHost());
+
+        if (in_array($id, $this->webtermSessionIds)) {
+            $this->dispatch('orca:webterm-minimize', sessionId: $id);
+        }
     }
 
     public function launchClaudeTerminal(): void
@@ -1249,11 +1258,28 @@ class Launcher extends MakeDevModuleComponent
             }
         }
 
-        // Determine poll interval: no polling needed when only webterm sessions are active
+        // Check for pop-in requests from tmux
+        foreach ($sessions as $s) {
+            if ($s->tmux_session_name && $s->isPoppedOut()) {
+                if (Cache::pull("orca:pop-in:{$s->id}")) {
+                    if (in_array($s->id, $this->webtermSessionIds)) {
+                        $this->dispatch('orca:webterm-unminimize', sessionId: $s->id);
+                    } else {
+                        $this->popIntoWebTerm($s->id);
+                    }
+                }
+            }
+        }
+
+        // Determine poll interval: poll when non-webterm sessions are active,
+        // or when any webterm session is popped out (awaiting potential pop-in)
         $hasNonWebtermActive = $sessions->contains(
             fn (OrcaSession $s) => $s->status->isActive() && ! in_array($s->id, $this->webtermSessionIds)
         );
-        $pollInterval = $hasNonWebtermActive ? '1s' : null;
+        $hasPoppedOutWebterm = $sessions->contains(
+            fn (OrcaSession $s) => $s->isPoppedOut() && in_array($s->id, $this->webtermSessionIds)
+        );
+        $pollInterval = ($hasNonWebtermActive || $hasPoppedOutWebterm) ? '1s' : null;
 
         return view('orca::livewire.launcher', [
             'sessions' => $sessions,

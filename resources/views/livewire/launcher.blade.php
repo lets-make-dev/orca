@@ -130,6 +130,8 @@
     x-on:orca:webterm-connect.window="if ($event.detail.command) webtermCommands[$event.detail.sessionId] = $event.detail.command; initWebTerm($event.detail.wsUrl, $event.detail.sessionId)"
     x-on:orca:webterm-disconnect.window="closeWebTerm($event.detail.sessionId)"
     x-on:orca:webterm-toggle.window="toggleMinimize($event.detail.sessionId)"
+    x-on:orca:webterm-minimize.window="minimizedPanels = { ...minimizedPanels, [$event.detail.sessionId]: true }"
+    x-on:orca:webterm-unminimize.window="minimizedPanels = { ...minimizedPanels, [$event.detail.sessionId]: false }; focusPanel($event.detail.sessionId)"
     x-on:wt-state="
         const id = $event.detail.id;
         const cur = webtermStates[id] || {};

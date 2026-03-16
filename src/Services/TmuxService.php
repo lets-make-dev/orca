@@ -96,6 +96,52 @@ class TmuxService
         return true;
     }
 
+    /**
+     * Configure tmux status bar and key binding for popping back into the browser.
+     */
+    public function configurePopIn(string $sessionId, string $baseUrl): void
+    {
+        $name = $this->sessionName($sessionId);
+        $binary = $this->binary();
+        $popInUrl = rtrim($baseUrl, '/').'/orca/pop-in';
+
+        // The key binding extracts the session ID from the tmux session name (orca-{id}),
+        // signals the pop-in endpoint, then detaches the client so the terminal window closes
+        $bindScript = sprintf(
+            'SN=$(tmux display-message -p "#{session_name}"); SID="${SN#orca-}"; curl -s -X POST %s -H "Content-Type: application/json" -d "{\\"session_id\\":\\"$SID\\"}" > /dev/null 2>&1; tmux detach-client',
+            escapeshellarg($popInUrl),
+        );
+
+        // Bind Prefix + B globally — the script checks the session name
+        exec(sprintf(
+            '%s bind-key B run-shell %s 2>/dev/null',
+            $binary,
+            escapeshellarg($bindScript),
+        ));
+
+        // Set session-specific status bar with hint
+        exec(sprintf(
+            '%s set-option -t %s status-right %s 2>/dev/null',
+            $binary,
+            escapeshellarg($name),
+            escapeshellarg(' #[fg=cyan]^b B#[default] → Browser '),
+        ));
+
+        exec(sprintf(
+            '%s set-option -t %s status-style %s 2>/dev/null',
+            $binary,
+            escapeshellarg($name),
+            escapeshellarg('bg=black,fg=white'),
+        ));
+
+        exec(sprintf(
+            '%s set-option -t %s status-left %s 2>/dev/null',
+            $binary,
+            escapeshellarg($name),
+            escapeshellarg(' #[fg=cyan]ORCA#[default] '),
+        ));
+    }
+
     public function attachCommand(string $sessionId): string
     {
         $name = $this->sessionName($sessionId);

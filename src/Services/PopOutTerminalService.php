@@ -119,7 +119,11 @@ class PopOutTerminalService
                 'ORCA_SESSION_ID' => $sessionId,
                 'ORCA_BASE_PATH' => base_path(),
             ]);
+
         }
+
+        // Always refresh the pop-in binding in case code has changed since the session was created
+        $tmux->configurePopIn($sessionId, $baseUrl);
 
         $session->update([
             'status' => OrcaSessionStatus::PoppedOut,
@@ -127,10 +131,22 @@ class PopOutTerminalService
             'tmux_session_name' => $tmuxName,
         ]);
 
-        // Build a script that attaches to the tmux session
+        // Build a script that attaches to the tmux session and closes the terminal window on detach
         $attachCmd = $tmux->attachCommand($sessionId);
         $scriptPath = sys_get_temp_dir().'/orca_popout_'.$sessionId.'.sh';
-        $script = "#!/bin/bash\nexec {$attachCmd}\n";
+        $script = <<<BASH
+#!/bin/bash
+# Save our Terminal window ID so we close the right window
+WINDOW_ID=\$(osascript -e 'tell application "Terminal" to get id of front window' 2>/dev/null)
+
+{$attachCmd}
+
+# After tmux detaches/exits, close this Terminal window
+if [ -n "\$WINDOW_ID" ]; then
+    osascript -e "tell application \"Terminal\" to close (every window whose id is \$WINDOW_ID)" 2>/dev/null &
+fi
+exit 0
+BASH;
 
         file_put_contents($scriptPath, $script);
         chmod($scriptPath, 0755);

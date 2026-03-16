@@ -129,6 +129,8 @@ class WebTermConnection
 
                 return;
             }
+
+            $tmux->configurePopIn($sessionId, config('app.url', 'http://localhost:8000'));
         }
 
         $this->usingTmux = true;
